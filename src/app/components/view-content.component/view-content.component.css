@@ -1,0 +1,6 @@
+:host { position: relative; z-index: 1; display: block; min-width: 0; }
+.view-content h2, .view-content h3 { margin: 0 0 9px; color: #142754; text-shadow: 1px 1px #a5edff; }
+.view-content h2 { font-family: "Courier New", monospace; font-size: 23px; }
+.view-content p { line-height: 1.5; }
+:host(.fill-mode) { display: flex; flex: 1 1 auto; min-height: 0; flex-direction: column; }
+.fill-mode .view-content { width: 100%; display: flex; flex: 1 1 auto; min-height: 0; flex-direction: column; }

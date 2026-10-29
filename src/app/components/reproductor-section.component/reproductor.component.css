@@ -1,0 +1,314 @@
+:host {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  color: #142754;
+}
+
+.player {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  padding: 16px;
+  border: 2px solid #142754;
+  background: linear-gradient(145deg, #ffe55b, #f29a43);
+}
+
+.file-picker {
+  position: relative;
+  flex: 0 0 auto;
+  align-self: flex-end;
+  overflow: hidden;
+  margin-bottom: 10px;
+  padding: 10px 13px;
+  border: 2px solid #176638;
+  background: #55b96f;
+  color: #103d2b;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.file-picker input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.viewer {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px;
+  border: 2px solid #176b91;
+  background: #bcecff;
+}
+
+.viewer-stage {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #10213b;
+}
+
+.viewer-stage.controls-toggle-enabled { cursor: pointer; }
+.controls-visibility-toggle { position: absolute; z-index: 3; top: 8px; right: 8px; padding: 6px 9px; border: 1px solid #fff8; border-radius: 4px; background: #10213bd9; color: #fff; font-size: 11px; cursor: pointer; }
+.controls-visibility-toggle:hover { background: #176b91; }
+
+.viewer-stage video,
+.viewer-stage img,
+.viewer-stage iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  object-fit: contain;
+  background: #10213b;
+}
+
+.viewer-stage audio {
+  width: min(100%, 460px);
+}
+
+.viewer-stage video,
+.viewer-stage img {
+  max-height: 100%;
+}
+
+.viewer-stage iframe {
+  flex: 1 1 auto;
+}
+
+.pdf-viewer { position: relative; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; background: #10213b; }
+.pdf-viewer .pdf-frame { display: block; min-width: 0; min-height: 0; transform-origin: top left; }
+.pdf-zoom-toolbar { position: sticky; z-index: 5; top: 8px; display: flex; width: max-content; align-items: center; gap: 4px; margin: 8px 8px -40px auto; padding: 4px; border: 1px solid #ffffff70; border-radius: 5px; background: #10213be8; color: #fff; }
+.pdf-zoom-toolbar button { min-width: 30px; min-height: 28px; border: 1px solid #ffffff70; border-radius: 3px; background: #fff; color: #142754; font-weight: 800; cursor: pointer; }
+.pdf-zoom-toolbar span { min-width: 42px; font-size: 11px; font-variant-numeric: tabular-nums; text-align: center; }
+
+.viewer-stage .zoomable-image { touch-action: none; user-select: none; cursor: ns-resize; transition: transform .08s linear; }
+.viewer-stage.image-stage { display: block; overflow: auto; overscroll-behavior: contain; }
+.viewer-stage.image-stage .zoomable-image { transform-origin: top left; }
+.image-zoom-toolbar { position: absolute; z-index: 4; top: 8px; right: 8px; display: flex; align-items: center; gap: 4px; padding: 4px; border: 1px solid #ffffff70; border-radius: 5px; background: #10213be8; color: #fff; }
+.image-stage .image-zoom-toolbar { position: sticky; top: 8px; width: max-content; margin-left: auto; }
+.image-zoom-toolbar button { min-width: 30px; min-height: 28px; border: 1px solid #ffffff70; border-radius: 3px; background: #fff; color: #142754; font-weight: 800; cursor: pointer; }
+.image-zoom-toolbar span { min-width: 42px; font-size: 11px; font-variant-numeric: tabular-nums; text-align: center; }
+
+.audio-art {
+  color: #ffe55b;
+  font-size: 100px;
+  line-height: 1;
+}
+
+.empty-player {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 24px;
+  text-align: center;
+}
+
+.other-preview {
+  width: 100%;
+  color: #fff;
+  text-align: center;
+}
+
+.other-preview iframe {
+  width: 100%;
+}
+
+.other-preview p {
+  margin: 8px;
+  color: #fff;
+}
+
+.empty-player > span {
+  font-size: 42px;
+}
+
+.other-preview a {
+  color: #ffe55b;
+  font-weight: 800;
+}
+
+.media-caption {
+  position: absolute;
+  z-index: 1;
+  right: 12px;
+  bottom: 112px;
+  left: 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: #10213bcc;
+  color: #fff;
+  font-size: 12px;
+}
+
+.media-caption strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.media-caption span {
+  flex: 0 0 auto;
+}
+
+.playback-controls {
+  position: absolute;
+  z-index: 1;
+  right: 12px;
+  bottom: 12px;
+  left: 12px;
+  padding: 10px;
+  border-radius: 4px;
+  border: 1px solid #176b91;
+  background: #e9fbffeF;
+}
+
+.progress-row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-row span:last-child {
+  text-align: right;
+}
+
+.progress-row input {
+  width: 100%;
+  accent-color: #176b91;
+}
+
+.button-row {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.button-row button,
+.bookmark-list button {
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 2px solid #142754;
+  background: #fff;
+  color: #142754;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.button-row button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.button-row .play-button {
+  min-width: 44px;
+  background: #55b96f;
+}
+
+.button-row .bookmark-button {
+  border-color: #9c2860;
+  background: #f7c4df;
+}
+
+.button-row .show-bookmarks-button { border-color: #176b91; background: #d6f4ff; }
+.button-row .show-bookmarks-button:disabled { opacity: .5; cursor: not-allowed; }
+.bookmark-modal-backdrop { position: fixed; z-index: 10000; inset: 0; display: grid; place-items: center; padding: 18px; background: #071319bb; }
+.bookmark-modal { width: min(100%, 420px); max-height: 80dvh; overflow: auto; padding: 18px; border: 2px solid #176b91; border-radius: 10px; background: #fffdf1; color: #142754; box-shadow: 0 15px 45px #0009; }
+.bookmark-modal header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid #d2c266; }
+.bookmark-modal h2 { margin: 4px 0; color: #142754; }.bookmark-modal header p { margin: 0; overflow-wrap: anywhere; color: #5d5a47; font-size: 12px; }
+.bookmark-modal-close { width: 34px; height: 34px; border: 1px solid #176b91; border-radius: 4px; background: #fff; color: #142754; font-size: 23px; cursor: pointer; }
+.bookmark-modal-list { display: grid; gap: 6px; margin: 12px 0 0; padding: 0; list-style: none; }
+.bookmark-modal-list li { display: flex; align-items: center; gap: 6px; padding: 5px; border: 1px solid #d9d2aa; border-radius: 4px; background: #fff; }
+.bookmark-jump { display: flex; flex: 1; align-items: center; gap: 8px; min-height: 34px; border: 0; background: transparent; color: #142754; font-weight: 700; text-align: left; cursor: pointer; }
+.bookmark-delete { width: 32px; height: 32px; border: 1px solid #a32626; border-radius: 4px; background: #ffe8e8; color: #a32626; font-size: 19px; cursor: pointer; }
+.bookmark-empty { margin: 14px 0 0; color: #605b42; }
+
+.bookmarks {
+  position: absolute;
+  z-index: 1;
+  right: 12px;
+  bottom: 82px;
+  left: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.bookmarks button {
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 2px solid #142754;
+  background: #fff;
+  color: #142754;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.player-message {
+  position: absolute;
+  z-index: 2;
+  top: 12px;
+  left: 12px;
+  margin: 0;
+  padding: 6px 9px;
+  border-radius: 4px;
+  background: #e9fbffee;
+  color: #263f93;
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 1;
+  transition: opacity .5s ease;
+}
+
+.player-message.fade-out { opacity: 0; }
+
+@media (max-width: 650px) {
+  .media-caption {
+    right: 8px;
+    bottom: 108px;
+    left: 8px;
+  }
+
+  .playback-controls {
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+    padding: 7px;
+  }
+
+  .bookmarks {
+    right: 8px;
+    bottom: 78px;
+    left: 8px;
+  }
+}

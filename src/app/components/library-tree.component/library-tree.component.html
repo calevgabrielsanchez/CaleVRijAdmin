@@ -1,0 +1,41 @@
+<section class="library-manager" aria-label="Library Tree">
+  <header class="library-manager-header"><div><h2>Library Tree</h2><p>Registra carpetas raíz y explora su contenido.</p></div><button type="button" class="library-add-button" (click)="addLibrary()">＋ Agregar Biblioteca</button></header>
+  @if (service.progress(); as scan) { @if (scan.running) { <div class="scan-progress" role="status"><span>Escaneando… {{ scan.scanned }} elementos</span><progress [value]="scan.percent" max="100"></progress></div> } }
+  <div class="library-manager-body">
+    <aside class="library-sidebar" aria-label="Bibliotecas registradas"><h3>Bibliotecas</h3>
+      @for (library of service.libraries(); track library.id) {
+        <article class="library-card" [class.selected-library]="selectedId() === library.id" (click)="selectLibrary(library)">
+          @if (coverUrl(library)) { <img class="library-cover" [src]="coverUrl(library)" [alt]="'Miniatura ' + library.name"> } @else { <div class="library-cover placeholder-cover" aria-hidden="true">📚</div> }
+          <div class="library-card-content"><strong>{{ library.name }}</strong><small>{{ library.fileCount }} archivos · {{ library.folderCount }} carpetas</small></div>
+          <div class="library-card-actions"><button type="button" title="Detalles de Biblioteca" aria-label="Detalles de Biblioteca" (click)="$event.stopPropagation(); showLibraryDetails(library)">ⓘ</button><button type="button" title="Miniatura" aria-label="Miniatura" (click)="$event.stopPropagation(); chooseCover(library, coverPicker)">▧</button><button type="button" title="Actualizar árbol" aria-label="Actualizar árbol" (click)="$event.stopPropagation(); rescan(library)">↻</button><button type="button" class="library-delete-action" title="Eliminar Biblioteca" aria-label="Eliminar Biblioteca" (click)="$event.stopPropagation(); removeLibrary(library)">×</button></div>
+        </article>
+      } @empty { <p class="empty-library-list">Aún no hay bibliotecas. Agrega una carpeta raíz.</p> }
+      @if (selectedLibrary(); as selected) { <div class="library-sidebar-actions"><button type="button" (click)="showLibraryDetails(selected)">Detalles de Biblioteca</button><button type="button" class="danger-button" (click)="removeLibrary(selected)">Eliminar Biblioteca</button></div> }
+    </aside>
+    <section class="library-browser" aria-label="Árbol de archivos">
+      @if (selectedLibrary(); as library) {
+        <div class="browser-toolbar"><div class="browser-title"><span>📚</span><strong>{{ library.name }}</strong></div><input class="library-search" type="search" placeholder="Buscar por nombre, extensión, tipo, tamaño o fecha…" aria-label="Buscar archivos" [value]="search()" (input)="search.set($any($event.target).value); visibleLimit.set(250)"></div>
+        <div class="tree-root-row"><span>📂</span><strong>{{ library.name }}</strong><small>{{ library.fileCount }} archivos</small></div>
+        <div class="indexed-tree" role="tree">
+          @for (node of visibleNodes().slice(0, visibleLimit()); track node.path) {
+            <div class="indexed-tree-row" role="treeitem" [class.playable-file]="node.kind === 'file'" [attr.aria-expanded]="node.kind === 'directory' ? expandedPaths().has(node.path) : null" [attr.tabindex]="node.kind === 'file' ? 0 : null" [attr.aria-label]="node.kind === 'file' ? 'Reproducir ' + node.name : null" [style.padding-left.px]="node.depth * 17 + 8" (click)="playFile(node)" (keydown)="onFileRowKeydown($event, node)">
+              @if (node.kind === 'directory') { <button type="button" class="tree-expander" [attr.aria-label]="expandedPaths().has(node.path) ? 'Colapsar carpeta' : 'Expandir carpeta'" (click)="toggleDirectory(node)">{{ expandedPaths().has(node.path) ? '▾' : '▸' }}</button> } @else { <span class="tree-expander-spacer"></span> }
+              <span class="file-type-icon" aria-hidden="true">{{ nodeIcon(node) }}</span><span class="indexed-node-name" [class.match-highlight]="nodeMatches(node)">{{ node.name }}</span>
+              @if (node.kind === 'file') { <small class="node-file-size">{{ service.formatBytes(node.size) }}</small><button type="button" class="node-action" title="Detalles" aria-label="Detalles" (click)="$event.stopPropagation(); showFileDetails(node)">ⓘ</button><button type="button" class="node-action danger-text" title="Eliminar Archivo" aria-label="Eliminar Archivo" (click)="$event.stopPropagation(); deleteFile(node)">×</button> }
+            </div>
+          } @empty { <p class="empty-tree">{{ search() ? 'No hay coincidencias.' : 'No se encontraron archivos o carpetas.' }}</p> }
+        </div>
+        @if (visibleNodes().length > visibleLimit()) { <button type="button" class="load-more-nodes" (click)="loadMore()">Mostrar más ({{ visibleNodes().length - visibleLimit() }} restantes)</button> }
+        <footer class="browser-status">Último escaneo: {{ library.lastScan ? (library.lastScan | date:'short') : 'pendiente' }} · {{ service.formatBytes(library.totalBytes) }}</footer>
+      } @else { <div class="select-library-prompt"><span>📚</span><h3>Selecciona o agrega una biblioteca</h3><p>El árbol mostrará las carpetas y archivos de la raíz seleccionada.</p></div> }
+    </section>
+  </div>
+  <div class="library-tree-message" role="status">{{ message() }}</div>
+</section>
+<input #coverPicker class="visually-hidden" type="file" accept="image/*" (change)="saveCover($event)">
+@if (libraryDetailsOpen() && libraryDetailTarget(); as library) {
+  <div class="library-modal-backdrop" (click)="$event.target === $event.currentTarget && libraryDetailsOpen.set(false)"><section class="library-details-dialog" role="dialog" aria-modal="true"><h2>Detalles de Biblioteca</h2>@if (coverUrl(library)) { <img class="details-cover" [src]="coverUrl(library)" [alt]="library.name"> }<table><tbody><tr><th>Nombre</th><td>{{ library.name }}</td></tr><tr><th>Ruta raíz seleccionada</th><td>{{ library.root.name }}</td></tr><tr><th>Carpetas</th><td>{{ library.folderCount }}</td></tr><tr><th>Archivos</th><td>{{ library.fileCount }}</td></tr><tr><th>Tamaño total</th><td>{{ service.formatBytes(library.totalBytes) }} ({{ library.totalBytes }} bytes)</td></tr><tr><th>Último escaneo</th><td>{{ library.lastScan ? (library.lastScan | date:'medium') : 'Pendiente' }}</td></tr><tr><th>Registro creado</th><td>{{ library.createdAt | date:'medium' }}</td></tr></tbody></table><button type="button" class="dialog-close" (click)="libraryDetailsOpen.set(false)">Cerrar</button></section></div>
+}
+@if (fileDetailsOpen() && fileDetailTarget(); as file) {
+  <div class="library-modal-backdrop" (click)="$event.target === $event.currentTarget && fileDetailsOpen.set(false)"><section class="library-details-dialog" role="dialog" aria-modal="true"><h2>Detalles del archivo · {{ file.name }}</h2><table><tbody>@for (detail of fileDetails(); track detail.label) { <tr><th>{{ detail.label }}</th><td>{{ detail.value }}</td></tr> }</tbody></table><button type="button" class="dialog-close" (click)="fileDetailsOpen.set(false)">Cerrar</button></section></div>
+}

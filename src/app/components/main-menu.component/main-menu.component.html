@@ -1,0 +1,7 @@
+<nav class="main-menu" aria-label="Navegación principal">
+  @for (item of items; track item.key) {
+    <button class="menu-button" type="button" [attr.aria-current]="activeKey === item.key ? 'page' : null" (click)="selected.emit(item.key)">
+      <span class="menu-icon" aria-hidden="true">{{ item.icon }}</span><span class="menu-label">{{ item.label }}</span>
+    </button>
+  }
+</nav>

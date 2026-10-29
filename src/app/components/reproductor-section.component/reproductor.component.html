@@ -1,0 +1,80 @@
+
+  @if (currentItem; as item) {
+      <div class="viewer-stage" [class.image-stage]="item.kind === 'image'" [class.controls-toggle-enabled]="canSeek" [attr.role]="canSeek ? 'button' : null" [attr.tabindex]="canSeek ? 0 : null" [attr.aria-label]="canSeek ? (showPlaybackControls ? 'Ocultar controles de reproducción' : 'Mostrar controles de reproducción') : null" (click)="togglePlaybackControls()" (keydown.enter)="togglePlaybackControls()" (keydown.space)="$event.preventDefault(); togglePlaybackControls()">
+          @if (canSeek) { <button type="button" class="controls-visibility-toggle" (click)="$event.stopPropagation(); togglePlaybackControls()">{{ showPlaybackControls ? 'Ocultar controles' : 'Mostrar controles' }}</button> }
+          @if (item.kind === 'audio') {
+            <div class="audio-art" aria-hidden="true">♫</div>
+            <audio #mediaPlayer [src]="item.url" (timeupdate)="updateTime()" (loadedmetadata)="updateDuration()" (durationchange)="updateDuration()" (play)="mediaStarted()" (pause)="mediaPaused()" (ended)="next(true)"></audio>
+          } @else if (item.kind === 'video') {
+            <video #mediaPlayer [src]="item.url" (timeupdate)="updateTime()" (loadedmetadata)="updateDuration()" (durationchange)="updateDuration()" (play)="mediaStarted()" (pause)="mediaPaused()" (ended)="next(true)" playsinline></video>
+          } @else if (item.kind === 'image') {
+            <div class="image-zoom-toolbar" (pointerdown)="$event.stopPropagation()" (click)="$event.stopPropagation()">
+              <button type="button" title="Alejar" aria-label="Alejar imagen" (click)="adjustImageZoom(-0.25)">−</button>
+              <span>{{ imageZoomPercent() }}%</span>
+              <button type="button" title="Acercar" aria-label="Acercar imagen" (click)="adjustImageZoom(0.25)">＋</button>
+              <button type="button" title="Restablecer zoom" aria-label="Restablecer zoom" (click)="resetImageZoom()">↺</button>
+            </div>
+            <img class="zoomable-image" [src]="item.url" [alt]="item.file.name" [style.transform]="'translate(' + imagePanX + 'px, ' + imagePanY + 'px) scale(' + imageZoom + ')'" title="Pellizca para acercar; después arrastra para recorrer la imagen" (pointerdown)="onImagePointerDown($event)" (pointermove)="onImagePointerMove($event)" (pointerup)="onImagePointerEnd($event)" (pointercancel)="onImagePointerEnd($event)" (lostpointercapture)="onImagePointerEnd($event)">
+          } @else if (item.kind === 'pdf') {
+            <div class="pdf-viewer" aria-label="Vista previa PDF">
+              <div class="pdf-zoom-toolbar" aria-label="Controles de zoom PDF">
+                <button type="button" title="Alejar PDF" aria-label="Alejar PDF" (click)="adjustPdfZoom(-0.2)">−</button>
+                <span>{{ (pdfZoom * 100).toFixed(0) }}%</span>
+                <button type="button" title="Acercar PDF" aria-label="Acercar PDF" (click)="adjustPdfZoom(0.2)">＋</button>
+                <button type="button" title="Restablecer zoom" aria-label="Restablecer zoom" (click)="resetPdfZoom()">↺</button>
+              </div>
+              <iframe class="pdf-frame" [src]="item.safeUrl" [title]="'Vista previa de ' + item.file.name" [style.transform]="'scale(' + pdfZoom + ')'" [style.width.%]="100" [style.height.%]="100"></iframe>
+            </div>
+          } @else {
+            <div class="other-preview">
+              <iframe [src]="item.safeUrl" [title]="'Vista previa de ' + item.file.name" sandbox></iframe>
+              <p>Si el navegador no puede mostrar este archivo, puedes descargarlo.</p>
+              <a [href]="item.url" [download]="item.file.name">Descargar archivo</a>
+            </div>
+          }
+      </div>
+
+      @if (canSeek && showPlaybackControls) {
+        <div class="playback-controls">
+          <div class="progress-row">
+            <span>{{ formatTime(currentTime) }}</span>
+            <input type="range" min="0" [max]="duration || 0" step="0.1" [value]="currentTime" [disabled]="duration <= 0" aria-label="Posición de reproducción" (input)="seekTo($event)">
+            <span>{{ formatTime(duration) }}</span>
+          </div>
+          <div class="button-row">
+            <button type="button" aria-label="Archivo anterior" title="Anterior" [disabled]="currentIndex === 0" (click)="previous()">|◀</button>
+            <button type="button" aria-label="Retroceder 10 segundos" title="Retroceder 10 segundos" (click)="seekBy(-10)">−10</button>
+            <button type="button" class="play-button" [attr.aria-label]="isPlaying ? 'Pausar' : 'Reproducir'" (click)="togglePlayback()">{{ isPlaying ? '❚❚' : '▶' }}</button>
+            <button type="button" aria-label="Avanzar 10 segundos" title="Avanzar 10 segundos" (click)="seekBy(10)">+10</button>
+            <button type="button" aria-label="Siguiente archivo" title="Siguiente" [disabled]="currentIndex === playlist.length - 1" (click)="next()">▶|</button>
+            <button type="button" class="bookmark-button" aria-label="Guardar marcador en la posición actual" title="Guardar marcador" (click)="addBookmark()">＋ Marcador</button>
+            <button type="button" class="show-bookmarks-button" title="Ver marcadores guardados" aria-label="Ver marcadores guardados" [disabled]="!currentBookmarks.length" (click)="openBookmarksModal()">☷ Marcadores ({{ currentBookmarks.length }})</button>
+          </div>
+        </div>
+      }
+    } @else {
+      <div class="empty-player">
+        <span aria-hidden="true">♫</span>
+        <h3>Selecciona archivos multimedia</h3>
+      </div>
+    }
+    @if (message) {
+      <p class="player-message" [class.fade-out]="messageFading" role="status">{{ message }}</p>
+    }
+
+    @if (bookmarksModalOpen) {
+      <div class="bookmark-modal-backdrop" (click)="$event.target === $event.currentTarget && closeBookmarksModal()">
+        <section class="bookmark-modal" role="dialog" aria-modal="true" aria-labelledby="bookmark-modal-title">
+          <header><div><span class="card-label">PUNTOS GUARDADOS</span><h2 id="bookmark-modal-title">Marcadores</h2><p>{{ currentItem?.file?.name }}</p></div><button type="button" class="bookmark-modal-close" aria-label="Cerrar marcadores" (click)="closeBookmarksModal()">×</button></header>
+          @if (currentBookmarks.length) {
+            <ul class="bookmark-modal-list">
+              @for (bookmark of currentBookmarks; track $index; let index = $index) {
+                <li><button type="button" class="bookmark-jump" (click)="goToBookmark(bookmark); closeBookmarksModal()"><span>▶</span>{{ bookmark.label }}</button><button type="button" class="bookmark-delete" title="Eliminar marcador" aria-label="Eliminar marcador" (click)="deleteBookmark(index)">×</button></li>
+              }
+            </ul>
+          } @else {
+            <p class="bookmark-empty">No hay marcadores para este archivo.</p>
+          }
+        </section>
+      </div>
+    }
