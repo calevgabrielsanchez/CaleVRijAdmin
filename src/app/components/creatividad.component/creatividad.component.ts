@@ -102,20 +102,7 @@ export class CreatividadComponent {
   palabras = signal<any[]>([]);
   datosConvertidos: any[] = [];
   catalogMessage = '';
-
-  private readonly wordBank: Record<string, string[]> = {
-    animales: ['zorro', 'ballena', 'colibrí', 'tortuga', 'lobo', 'mariposa', 'pulpo'],
-    adjetivos: ['luminoso', 'antiguo', 'valiente', 'silencioso', 'curioso', 'frágil', 'infinito'],
-    hombre: ['viajero', 'artesano', 'astrónomo', 'guardabosques', 'navegante'],
-    lugares: ['estación', 'bosque', 'mercado', 'isla', 'biblioteca', 'desierto'],
-    mujer: ['pintora', 'inventora', 'exploradora', 'jardinera', 'música'],
-    oficios: ['relojero', 'panadera', 'cartógrafo', 'boticaria', 'farero'],
-    pronombres: ['alguien', 'nosotros', 'ella', 'ellos', 'cualquiera'],
-    sustantivos: ['reloj', 'puente', 'semilla', 'ventana', 'mapa', 'tormenta'],
-    transporte: ['tranvía', 'bicicleta', 'barco', 'dirigible', 'tren'],
-    verbos: ['imaginar', 'descubrir', 'construir', 'recordar', 'volar', 'transformar'],
-    varias: ['amanecer', 'secreto', 'eco', 'destino', 'azar']
-  };
+  wordGenerationMessage = '';
 
   ejercicios = signal<any[]>([]);
   arquetipos = signal<any[]>([]);
@@ -320,15 +307,33 @@ export class CreatividadComponent {
   onGenerarPalabras() {
     const requested = Number.parseInt(prompt('¿Cuántas palabras quieres generar?', '5') ?? '5', 10);
     const count = Number.isFinite(requested) && requested > 0 ? Math.min(requested, 100) : 5;
-    const selected = Object.entries(this.camposSemanticos.value)
-      .filter(([key, checked]) => checked && key !== 'todas')
-      .map(([key]) => key);
-    if (this.camposSemanticos.get('todas')?.value) selected.push(...Object.keys(this.wordBank));
-    const categories = [...new Set(selected)];
-    if (!categories.length) { this.palabras.set([]); return; }
-    this.palabras.set(categories.flatMap(category =>
-      this.obtenerElementosAleatorios(this.wordBank[category] ?? [], count).map(palabra => ({ palabra, categoria: category }))
-    ));
+    const categories = ['adjetivos', 'animales', 'hombre', 'lugares', 'mujer', 'oficios', 'pronombres', 'sustantivos', 'transporte', 'verbos', 'varias'];
+    const selected = this.camposSemanticos.get('todas')?.value
+      ? ['todasPalabras']
+      : categories.filter(category => this.camposSemanticos.get(category)?.value);
+    if (!selected.length) { this.palabras.set([]); this.wordGenerationMessage = 'Selecciona al menos una categoría.'; return; }
+    this.wordGenerationMessage = 'Cargando palabras de los archivos CSV…';
+    void Promise.all(selected.map(async category => {
+      const words = await this.loadWordsFromCsv(category);
+      return this.obtenerElementosAleatorios(words, count).map(palabra => ({ palabra, categoria: category }));
+    })).then(groups => {
+      this.palabras.set(groups.flat());
+      this.wordGenerationMessage = `${this.palabras().length} palabras generadas.`;
+    }).catch(() => {
+      this.palabras.set([]);
+      this.wordGenerationMessage = 'No se pudieron cargar las palabras seleccionadas desde public/csv.';
+    });
+  }
+
+  private async loadWordsFromCsv(category: string): Promise<string[]> {
+    const response = await fetch(new URL(`csv/${category}.csv`, document.baseURI));
+    if (!response.ok) throw new Error(`No se pudo cargar ${category}.csv`);
+    const lines = (await response.text()).replace(/\r/g, '').split('\n').filter(line => line.trim());
+    if (lines.length < 2) return [];
+    const headers = this.parseCsvLine(lines[0]).map(header => header.toLowerCase());
+    const column = headers.indexOf('palabra');
+    if (column < 0) throw new Error(`El archivo ${category}.csv no contiene la columna palabra.`);
+    return lines.slice(1).map(line => this.parseCsvLine(line)[column] ?? '').filter(Boolean);
   }
 
   obtenerElementosAleatorios(datos: any[], n: number): any[] {
@@ -475,9 +480,42 @@ export class CreatividadComponent {
   //---------------------------Memoria-------------------------------
   //===============================================================
   tablaMemoria = signal<any[]>([]);
-  crearTablaMemoria() {
-    const emojis = ['🌱', '🌊', '⭐', '🪶', '🌙', '🔥', '🪨', '🌈', '🍃', '🧭', '🕯️', '🦋', '🌻', '☁️', '🐚', '🍂', '🔑', '🪐', '🌺', '🎈'];
-    this.tablaMemoria.set(emojis.map((emogi, index) => ({ id: String(index + 1), key: `memoria-${index + 1}`, emogi, palabra: '' })));
+  memoryTableMessage = '';
+
+  async crearTablaMemoria(): Promise<void> {
+    this.memoryTableMessage = '';
+    try {
+      const url = new URL('csv/memoria.csv', document.baseURI);
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const lines = (await response.text()).replace(/\r/g, '').split('\n').filter(line => line.trim());
+      if (!lines.length) { this.tablaMemoria.set([]); return; }
+      const headers = this.parseCsvLine(lines[0]);
+      const rows = lines.slice(1).map(line => {
+        const columns = this.parseCsvLine(line);
+        return Object.fromEntries(headers.map((header, index) => [header, columns[index] ?? '']));
+      });
+      this.tablaMemoria.set(rows);
+    } catch {
+      this.tablaMemoria.set([]);
+      this.memoryTableMessage = 'No se pudo cargar public/csv/memoria.csv.';
+    }
+  }
+
+  private parseCsvLine(line: string): string[] {
+    const fields: string[] = [];
+    let field = '';
+    let quoted = false;
+    for (let index = 0; index < line.length; index++) {
+      const char = line[index];
+      if (char === '"') {
+        if (quoted && line[index + 1] === '"') { field += '"'; index++; }
+        else quoted = !quoted;
+      } else if (char === ',' && !quoted) { fields.push(field); field = ''; }
+      else field += char;
+    }
+    fields.push(field);
+    return fields.map(value => value.trim());
   }
   ocultarPalabra($event: any) {
     const elemento = $event.currentTarget as HTMLElement;
@@ -492,15 +530,19 @@ export class CreatividadComponent {
 
   }
 
-  alternarPalabra() {
-    const vocabulary = Object.values(this.wordBank).flat();
-    const words = this.obtenerElementosAleatorios(vocabulary, 20);
-    this.historia = [];
-    words.forEach((word, index) => {
-      const input = document.getElementById(`text${index + 1}`) as HTMLInputElement | null;
-      if (input) input.value = word;
-      this.historia.push(word);
-    });
+  async alternarPalabra(): Promise<void> {
+    try {
+      const words = this.obtenerElementosAleatorios(await this.loadWordsFromCsv('todasPalabras'), 20);
+      this.historia = [];
+      words.forEach((word, index) => {
+        const input = document.getElementById(`text${index + 1}`) as HTMLInputElement | null;
+        if (input) input.value = word;
+        this.historia.push(word);
+      });
+      this.wordGenerationMessage = 'Se cargaron palabras nuevas para Memoria.';
+    } catch {
+      this.wordGenerationMessage = 'No se pudo cargar public/csv/todasPalabras.csv.';
+    }
   }
 
   ocultarTodasPalabra() {
@@ -1344,6 +1386,7 @@ export class CreatividadComponent {
     const resultado = (resultadoText as HTMLInputElement).value;
     if (parseFloat(resultado) == this.resultadoTienda || this.operacionResultado == resultado) {
       (resultadoText as HTMLInputElement).value = '';
+      this.generarJuegMatematic();
     } else {
       alert("Te fallo amigo, vuelve a intentarlo. ntp.");
       (resultadoText as HTMLInputElement).value = '';

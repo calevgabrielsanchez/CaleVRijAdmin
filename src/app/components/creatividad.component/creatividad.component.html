@@ -1,267 +1,276 @@
+@if (mostrarMenuModal) {
+<div class="menu-overlay" (click)="mostrarMenu()">
+    <div class="menu-modal" (click)="$event.stopPropagation()">
+        <div class="menu-header">
+            <span>Menú</span>
+            <button class="menu-cerrar" (click)="mostrarMenu()"><fa-icon size="2x"
+                    [icon]="faSquareXmark"></fa-icon></button>
+        </div>
+        <nav class="menu-lista">
+            <button class="menu-opcion" (click)="onClickCaleVRije()">CaleVRije</button>
+            <button class="menu-opcion active">Juegos</button>
+            <button class="menu-opcion" (click)="onClickMente()">Mente</button>
+        </nav>
 
-        @if (mostrarMenuModal) {
-        <div class="menu-overlay" (click)="mostrarMenu()">
-            <div class="menu-modal" (click)="$event.stopPropagation()">
-                <div class="menu-header">
-                    <span>Menú</span>
-                    <button class="menu-cerrar" (click)="mostrarMenu()"><fa-icon size="2x" [icon]="faSquareXmark"></fa-icon></button>
-                </div>
-                <nav class="menu-lista">
-                    <button class="menu-opcion" (click)="onClickCaleVRije()">CaleVRije</button>
-                    <button class="menu-opcion active" >Juegos</button>
-                    <button class="menu-opcion" (click)="onClickMente()">Mente</button>
-                </nav>
+        <nav class="menu-lista">
+            <button class="menu-opcion" (click)="cargarDatosLocales()"><fa-icon size="2x" [icon]="faRefresh"></fa-icon>
+                Cargar datos de biblioteca</button>
+            <button class="menu-opcion" (click)="onGuardarCambios()"><fa-icon size="2x" [icon]="faSave"></fa-icon>
+                Guardar en biblioteca</button>
+        </nav>
 
-                <nav class="menu-lista">
-                    <button class="menu-opcion" (click)="cargarDatosLocales()"><fa-icon size="2x"
-                            [icon]="faRefresh"></fa-icon> Cargar datos de biblioteca</button>
-                    <button class="menu-opcion" (click)="onGuardarCambios()"><fa-icon size="2x"
-                            [icon]="faSave"></fa-icon> Guardar en biblioteca</button>
-                </nav>
+    </div>
+</div>
+}
 
+@if (storageMessage) { <p class="storage-message" role="status">{{ storageMessage }}</p> }
+@if (catalogMessage) { <p class="storage-message" role="alert">{{ catalogMessage }}</p> }
+<main class="main-content">
+    <div class="control-panel">
+        <div class="row-universo">
+            <label>Menu:</label>
+            <div class="btn-group-four">
+                <button class="square-btn light-txt" (click)="selectJuego('creatividad')"><fa-icon size="2x"
+                        [class.active]="creatividad" [icon]="faUserSecret"></fa-icon></button>
+                <button class="square-btn light-txt" (click)="selectJuego('memoria')"><fa-icon size="2x"
+                        [class.active]="memoriaB" [icon]="faBrain"></fa-icon></button>
+                <button class="square-btn light-txt" (click)="selectJuego('matematicas')"><fa-icon size="2x"
+                        [class.active]="matematicas" [icon]="faBug"></fa-icon></button>
+                <button class="square-btn light-txt" (click)="selectJuego('dibujo')"><fa-icon size="2x"
+                        [class.active]="dibujo" [icon]="faShrimp"></fa-icon></button>
             </div>
         </div>
-        }
-
-        @if (storageMessage) { <p class="storage-message" role="status">{{ storageMessage }}</p> }
-        @if (catalogMessage) { <p class="storage-message" role="alert">{{ catalogMessage }}</p> }
-        <main class="main-content">
-            <div class="control-panel">
-                <div class="row-universo">
-                    <label>Menu:</label>
-                    <div class="btn-group-four">
-                        <button class="square-btn light-txt" (click)="selectJuego('creatividad')"><fa-icon size="2x" [class.active]="creatividad"
-                                [icon]="faUserSecret"></fa-icon></button>
-                        <button class="square-btn light-txt" (click)="selectJuego('memoria')"><fa-icon size="2x" [class.active]="memoriaB"
-                                [icon]="faBrain"></fa-icon></button>
-                        <button class="square-btn light-txt" (click)="selectJuego('matematicas')"><fa-icon size="2x" [class.active]="matematicas"
-                                [icon]="faBug"></fa-icon></button>
-                        <button class="square-btn light-txt" (click)="selectJuego('dibujo')"><fa-icon size="2x" [class.active]="dibujo"
-                                [icon]="faShrimp"></fa-icon></button>
-                    </div>
+        <div id="creatividad-div" [hidden]="!creatividad">
+            <div class="row-universo">
+                <div class="btn-group-four">
+                    <button class="square-btn light-txt" (click)="onEscribirEjercicioCreatividad()"><fa-icon size="2x"
+                            [icon]="faPenFancy"></fa-icon></button>
+                    <button class="square-btn light-txt" (click)="onGuardarCreatividad()"><fa-icon size="2x"
+                            [icon]="faSave"></fa-icon></button>
+                    <button class="square-btn light-txt" (click)="onAbrirCreatividad()"><fa-icon size="2x"
+                            [icon]="faFolderOpen"></fa-icon></button>
                 </div>
-                <div id="creatividad-div" [hidden]="!creatividad">
-                    <div class="row-universo">
-                        <div class="btn-group-four">
-<button class="square-btn light-txt" (click)="onEscribirEjercicioCreatividad()"><fa-icon
-                                        size="2x" [icon]="faPenFancy"></fa-icon></button>
-                            <button class="square-btn light-txt" (click)="onGuardarCreatividad()"><fa-icon
-                                    size="2x" [icon]="faSave"></fa-icon></button>
-                            <button class="square-btn light-txt" (click)="onAbrirCreatividad()"><fa-icon size="2x"
-                                    [icon]="faFolderOpen"></fa-icon></button>
+            </div>
+            <div class="control-panel-v2">
+                <div class="section-block">
+                    <div class="row-full-select">
+                        <label>Ejercicio:</label>
+                        <div class="custom-select">
+                            <select name="ejercicio" id="ejercicio" (change)="onSelectEjercicio($event)">
+                                <option value='0'>Elige...</option>
+                                @for (ejercicio of ejercicios(); track ejercicio.id) {
+                                <option value='{{ejercicio.id}}'>{{ejercicio.nombre}}</option>
+                                } @empty {
+                                <option value='0'>-Vacio-</option>
+                                }
+                            </select>
                         </div>
+                        <p style="color: #44e233;
+    background-color: #333ac3;
+    border-radius: 6px;
+    padding: 4px;;">{{descripcionEjercicioSeleccionado}}</p>
                     </div>
-                    <div class="control-panel-v2">
-                        <div class="section-block">
-                            <div class="row-full-select">
-                                <label>Ejercicio:</label>
-                                <div class="custom-select">
-                                    <select name="ejercicio" id="ejercicio" (change)="onSelectEjercicio($event)">
-                                        <option value='0'>Elige...</option>
-                                        @for (ejercicio of ejercicios(); track ejercicio.id) {
-                                        <option value='{{ejercicio.id}}'>{{ejercicio.nombre}}</option>
-                                        } @empty {
-                                        <option value='0'>-Vacio-</option>
-                                        }
-                                    </select>
-                                </div>
-                                <p style="color: #44e233;">{{descripcionEjercicioSeleccionado}}</p>
-                            </div>
-                            <div class="col-actions">
-                                <button class="square-btn light-txt" type="button" aria-label="Elegir ejercicio aleatorio"
-                                    title="Elegir ejercicio aleatorio" (click)="onEjercicioAleatorio()">
-                                    <fa-icon [icon]="faArrowsSpin"></fa-icon>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="control-panel-v2">
-                        <div class="section-block">
-                            <div class="row-full-select">
-                                <label>Arquetipos:</label>
-                                <div class="custom-select">
-                                    <select name="arquetipo" id="arquetipo" (change)="onSelectArquetipo($event)">
-                                        <option value='0'>Elige...</option>
-                                        @for (arquetipo of arquetipos(); track arquetipo.id) {
-                                        <option value='{{arquetipo.id}}'>{{arquetipo.nombre}}@if (arquetipo.categoria) { · {{arquetipo.categoria}} }</option>
-                                        } @empty {
-                                        <option value='0'>-Vacio-</option>
-                                        }
-                                    </select>
-                                </div>
-                                <pre style="color: #44e233;overflow: auto;">{{descripcionArquetipoSeleccionado}}</pre>
-                            </div>
-                            <div class="col-actions">
-                                <button class="square-btn light-txt" (click)="onArquetipoAleatorio()"><fa-icon size="2x"
-                                        [icon]="faArrowsSpin"></fa-icon></button>
-
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="control-panel-v2">
-                        <div class="section-block">
-                            <div class="row-full-select">
-                                <label>Generar Palabras</label>
-                                <div class="word-generate">
-                                    @for(palabra of (palabras()); track $index) {
-                                    <span class="word">{{ palabra.palabra }}</span>
-                                    }
-                                </div>
-                                <div class="checks-conts">
-                                    <form action="" [formGroup]="camposSemanticos" class="form-palabras">
-                                        <label><input type="checkbox" formControlName="animales"> Animales</label>
-                                        <label><input type="checkbox" formControlName="adjetivos"> Adjetivos</label>
-                                        <label><input type="checkbox" formControlName="hombre"> Hombre</label>
-                                        <label><input type="checkbox" formControlName="lugares"> Lugares</label>
-                                        <label><input type="checkbox" formControlName="mujer"> Mujer</label>
-                                        <label><input type="checkbox" formControlName="oficios"> Oficios</label>
-                                        <label><input type="checkbox" formControlName="pronombres">
-                                            Pronombres</label>
-                                        <label><input type="checkbox" formControlName="sustantivos">
-                                            Sustantivos</label>
-                                        <label><input type="checkbox" formControlName="transporte">
-                                            Transporte</label>
-                                        <label><input type="checkbox" formControlName="verbos"> Verbos</label>
-                                        <label><input type="checkbox" formControlName="varias"> Varias</label>
-                                        <label><input type="checkbox" formControlName="todas"> Todas</label>
-                                    </form>
-                                </div>
-                                <div class="col-actions">
-                                    <button class="square-btn light-txt" (click)="onGenerarPalabras()"><fa-icon
-                                            size="2x" [icon]="faArrowsSpin"></fa-icon></button>
-
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div [hidden]="!memoriaB">
-                    <div class="row-universo">
-                        <div class="btn-group-four">
-                            <button class="square-btn light-txt" (click)="guardarMemoria()"><fa-icon size="2x"
-                                    [icon]="faSave"></fa-icon></button>
-                            <button class="square-btn light-txt" (click)="abrirMemoria()"><fa-icon size="2x"
-                                    [icon]="faFolderOpen"></fa-icon></button>
-                        </div>
-                    </div>
-                    <table class="table-elegante">
-                        <thead>
-                            <tr>
-                                <th>id</th>
-                                <th>em</th>
-                                <th>Key</th>
-                                <th>Palabra</th>
-                                <th class="controls">
-                                    <button class="square-btn light-txt" (click)="ocultarTodasPalabra()"><fa-icon
-                                            size="2x" [icon]="faEye"></fa-icon></button>
-                                    <button class="square-btn light-txt" (click)="escribirTodaHistoria()"><fa-icon
-                                            size="2x" [icon]="faBookOpen"></fa-icon></button>
-                                    <button class="square-btn light-txt" (click)="alternarPalabra()"><fa-icon size="2x"
-                                            [icon]="faArrowsSpin"></fa-icon></button>
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @for (item of tablaMemoria(); track item.id) {
-                            <tr>
-                                <td style="background-color: rgb(255, 255, 255);"><span
-                                        style="font-size: 58px; transform: scale(1.5); display: inline-block;"
-                                        [innerHTML]="item.emogi"></span></td>
-                                <td>{{item.id}}</td>
-                                <td>{{item.key}}</td>
-                                <td><input type="text" class="input-text" id="text{{item.id}}"></td>
-                                <td class="controls"><button class="square-btn light-txt"
-                                        [attr.data-id]="'text' + item.id" (click)="ocultarPalabra($event)"><fa-icon
-                                            size="2x" [icon]="faEye"></fa-icon></button>
-                                    <button class="square-btn light-txt" [attr.data-id]="'text' + item.id"
-                                        (click)="escribirHistoria($event)"><fa-icon size="2x"
-                                            [icon]="faBookOpen"></fa-icon></button>
-                                </td>
-                            </tr>
-                            } @empty {
-                            <tr>
-                                <td colspan="5">-Vacio-</td>
-                            </tr>
-                            }
-                    </table>
-
-                </div>
-
-                <div [hidden]="!matematicas">
-                    <div id="tienda" class="contenedor-inputs-mat">
-                        <input type="text" name="numero1" id="numero1">
-                        <input type="text" name="operacion" id="operacion">
-                        <input type="text" name="numero2" id="numero2">
-                        <input type="text" name="resultado" id="resultado" (keyup.enter)="onEnterResultadoTienda()">
-                    </div>
-                    <div class="checks-conts">
-                        <form action="" [formGroup]="controlesTienda" class="form-palabras">
-                            <label><input type="checkbox" formControlName="decimal"> decimal</label>
-                            <label><input type="checkbox" formControlName="tienda"> tienda</label>
-                            <label><input type="checkbox" formControlName="suma"> suma</label>
-                            <label><input type="checkbox" formControlName="resta"> resta</label>
-                            <label><input type="checkbox" formControlName="multiplicacion"> multiplicacion</label>
-                            <label><input type="checkbox" formControlName="divicion"> divicion</label>
-                            <label><input type="radio" name="juegoSeleccionada" formControlName="juegoSeleccionada"
-                                    value="operaciones">Operaciones</label>
-                            <label><input type="radio" name="juegoSeleccionada" formControlName="juegoSeleccionada"
-                                    value="porcentaje">Porcentaje</label>
-                            <label><input type="radio" name="juegoSeleccionada" formControlName="juegoSeleccionada"
-                                    value="raiz">Raiz</label>
-                            <label><input type="radio" name="juegoSeleccionada" formControlName="juegoSeleccionada"
-                                    value="completar">Completar</label>
-                        </form>
-                        <div class="controls">
-                            <button (click)="generarJuegMatematic()" class="square-btn light-txt">
-                                <fa-icon size="2x" [icon]="faArrowsSpin"></fa-icon>
-                            </button>
-                            <button (click)="mostrarResultado()" class="square-btn light-txt">
-                                <fa-icon size="2x" [icon]="faEye"></fa-icon>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <div [hidden]="!dibujo">
-
-                    <div class="app">
-                        <div class="controls">
-                            <button (click)="generateRandomCharacter()" class="square-btn light-txt">
-                                <fa-icon size="2x" [icon]="faTextHeight"></fa-icon>
-                            </button>
-
-                            <button (click)="clearDrawing()" class="square-btn light-txt">
-                                <fa-icon size="2x" [icon]="faEraser"></fa-icon>
-                            </button>
-
-                            <button (click)="escribirHistoriaDibujo()" class="square-btn light-txt">
-                                <fa-icon size="2x" [icon]="faFileHalfDashed"></fa-icon>
-                            </button>
-
-                            <button (click)="guardarDibujo()" class="square-btn light-txt">
-                                <fa-icon size="2x" [icon]="faSave"></fa-icon>
-                            </button>
-
-                            <button (click)="abrirDibujo()" class="square-btn light-txt">
-                                <fa-icon size="2x" [icon]="faFolderOpen"></fa-icon>
-                            </button>
-                        </div>
-
-                        <div class="canvas-container">
-                            <canvas #canvas width="800px" height="800px" (pointerdown)="startDrawing($event)"
-                                (pointermove)="draw($event)" (pointerup)="stopDrawing()" (pointercancel)="stopDrawing()"
-                                (pointerleave)="stopDrawing()">
-                            </canvas>
-                        </div>
+                    <div class="col-actions">
+                        <button class="square-btn light-txt" type="button" aria-label="Elegir ejercicio aleatorio"
+                            title="Elegir ejercicio aleatorio" (click)="onEjercicioAleatorio()">
+                            <fa-icon [icon]="faArrowsSpin"></fa-icon>
+                        </button>
                     </div>
                 </div>
             </div>
-        </main>
-  
 
-    @if (mostrarTextPlus()) {
-    <app-text-plus [(textoContenido)]="textoAEditar" (cerrar)="cerrar()" (aceptar)="aceptar()"></app-text-plus>
-    }
+            <div class="control-panel-v2">
+                <div class="section-block">
+                    <div class="row-full-select">
+                        <label>Arquetipos:</label>
+                        <div class="custom-select">
+                            <select name="arquetipo" id="arquetipo" (change)="onSelectArquetipo($event)">
+                                <option value='0'>Elige...</option>
+                                @for (arquetipo of arquetipos(); track arquetipo.id) {
+                                <option value='{{arquetipo.id}}'>{{arquetipo.nombre}}@if (arquetipo.categoria) { ·
+                                    {{arquetipo.categoria}} }</option>
+                                } @empty {
+                                <option value='0'>-Vacio-</option>
+                                }
+                            </select>
+                        </div>
+                        <pre style="color: #44e233;
+    background-color: #333ac3;
+    border-radius: 6px;
+    padding: 4px;overflow: auto;">{{descripcionArquetipoSeleccionado}}</pre>
+                    </div>
+                    <div class="col-actions">
+                        <button class="square-btn light-txt" (click)="onArquetipoAleatorio()"><fa-icon size="2x"
+                                [icon]="faArrowsSpin"></fa-icon></button>
+
+                    </div>
+                </div>
+            </div>
+
+            <div class="control-panel-v2">
+                <div class="section-block">
+                    <div class="row-full-select">
+                        <label>Generar Palabras</label>
+                        <div class="word-generate">
+                            @for(palabra of (palabras()); track $index) {
+                            <span class="word">{{ palabra.palabra }}</span>
+                            }
+                        </div>
+                        <div class="checks-conts">
+                            <form action="" [formGroup]="camposSemanticos" class="form-palabras">
+                                <label><input type="checkbox" formControlName="animales"> Animales</label>
+                                <label><input type="checkbox" formControlName="adjetivos"> Adjetivos</label>
+                                <label><input type="checkbox" formControlName="hombre"> Hombre</label>
+                                <label><input type="checkbox" formControlName="lugares"> Lugares</label>
+                                <label><input type="checkbox" formControlName="mujer"> Mujer</label>
+                                <label><input type="checkbox" formControlName="oficios"> Oficios</label>
+                                <label><input type="checkbox" formControlName="pronombres">
+                                    Pronombres</label>
+                                <label><input type="checkbox" formControlName="sustantivos">
+                                    Sustantivos</label>
+                                <label><input type="checkbox" formControlName="transporte">
+                                    Transporte</label>
+                                <label><input type="checkbox" formControlName="verbos"> Verbos</label>
+                                <label><input type="checkbox" formControlName="varias"> Varias</label>
+                                <label><input type="checkbox" formControlName="todas"> Todas</label>
+                            </form>
+                        </div>
+                        <div class="col-actions">
+                            <button class="square-btn light-txt" (click)="onGenerarPalabras()"><fa-icon size="2x"
+                                    [icon]="faArrowsSpin"></fa-icon></button>
+
+                        </div>
+                        @if (wordGenerationMessage) { <p class="storage-message" role="status">{{ wordGenerationMessage
+                            }}</p> }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div [hidden]="!memoriaB">
+            <div class="row-universo">
+                <div class="btn-group-four">
+                    <button class="square-btn light-txt" (click)="guardarMemoria()"><fa-icon size="2x"
+                            [icon]="faSave"></fa-icon></button>
+                    <button class="square-btn light-txt" (click)="abrirMemoria()"><fa-icon size="2x"
+                            [icon]="faFolderOpen"></fa-icon></button>
+                </div>
+            </div>
+            @if (memoryTableMessage) { <p class="storage-message" role="alert">{{ memoryTableMessage }}</p> }
+            <table class="table-elegante">
+                <thead>
+                    <tr>
+                        <th>id</th>
+                        <th>em</th>
+                        <th>Key</th>
+                        <th>Palabra</th>
+                        <th class="controls">
+                            <button class="square-btn light-txt" (click)="ocultarTodasPalabra()"><fa-icon size="2x"
+                                    [icon]="faEye"></fa-icon></button>
+                            <button class="square-btn light-txt" (click)="escribirTodaHistoria()"><fa-icon size="2x"
+                                    [icon]="faBookOpen"></fa-icon></button>
+                            <button class="square-btn light-txt" (click)="alternarPalabra()"><fa-icon size="2x"
+                                    [icon]="faArrowsSpin"></fa-icon></button>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (item of tablaMemoria(); track item.id) {
+                    <tr>
+                        <td style="background-color: rgb(255, 255, 255);"><span
+                                style="font-size: 30px; transform: scale(1.5); display: inline-block;"
+                                [innerHTML]="item.emogi"></span></td>
+                        <td>{{item.id}}</td>
+                        <td>{{item.key}}</td>
+                        <td><input type="text" class="input-text" id="text{{item.id}}"></td>
+                        <td class="controls"><button class="square-btn light-txt" [attr.data-id]="'text' + item.id"
+                                (click)="ocultarPalabra($event)"><fa-icon size="2x" [icon]="faEye"></fa-icon></button>
+                            <button class="square-btn light-txt" [attr.data-id]="'text' + item.id"
+                                (click)="escribirHistoria($event)"><fa-icon size="2x"
+                                    [icon]="faBookOpen"></fa-icon></button>
+                        </td>
+                    </tr>
+                    } @empty {
+                    <tr>
+                        <td colspan="5">-Vacio-</td>
+                    </tr>
+                    }
+            </table>
+
+        </div>
+
+        <div [hidden]="!matematicas">
+            <div id="tienda" class="contenedor-inputs-mat">
+                <input type="text" name="numero1" id="numero1">
+                <input type="text" name="operacion" id="operacion">
+                <input type="text" name="numero2" id="numero2">
+                <input type="text" name="resultado" id="resultado" (keyup.enter)="onEnterResultadoTienda()">
+            </div>
+            <div class="checks-conts">
+                <form action="" [formGroup]="controlesTienda" class="form-palabras">
+                    <label><input type="checkbox" formControlName="decimal"> decimal</label>
+                    <label><input type="checkbox" formControlName="tienda"> tienda</label>
+                    <label><input type="checkbox" formControlName="suma"> suma</label>
+                    <label><input type="checkbox" formControlName="resta"> resta</label>
+                    <label><input type="checkbox" formControlName="multiplicacion"> multiplicacion</label>
+                    <label><input type="checkbox" formControlName="divicion"> divicion</label>
+                    <label><input type="radio" name="juegoSeleccionada" formControlName="juegoSeleccionada"
+                            value="operaciones">Operaciones</label>
+                    <label><input type="radio" name="juegoSeleccionada" formControlName="juegoSeleccionada"
+                            value="porcentaje">Porcentaje</label>
+                    <label><input type="radio" name="juegoSeleccionada" formControlName="juegoSeleccionada"
+                            value="raiz">Raiz</label>
+                    <label><input type="radio" name="juegoSeleccionada" formControlName="juegoSeleccionada"
+                            value="completar">Completar</label>
+                </form>
+                <div class="controls">
+                    <button (click)="generarJuegMatematic()" class="square-btn light-txt">
+                        <fa-icon size="2x" [icon]="faArrowsSpin"></fa-icon>
+                    </button>
+                    <button (click)="mostrarResultado()" class="square-btn light-txt">
+                        <fa-icon size="2x" [icon]="faEye"></fa-icon>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div [hidden]="!dibujo">
+
+            <div class="app">
+                <div class="controls">
+                    <button (click)="generateRandomCharacter()" class="square-btn light-txt">
+                        <fa-icon size="2x" [icon]="faTextHeight"></fa-icon>
+                    </button>
+
+                    <button (click)="clearDrawing()" class="square-btn light-txt">
+                        <fa-icon size="2x" [icon]="faEraser"></fa-icon>
+                    </button>
+
+                    <button (click)="escribirHistoriaDibujo()" class="square-btn light-txt">
+                        <fa-icon size="2x" [icon]="faFileHalfDashed"></fa-icon>
+                    </button>
+
+                    <button (click)="guardarDibujo()" class="square-btn light-txt">
+                        <fa-icon size="2x" [icon]="faSave"></fa-icon>
+                    </button>
+
+                    <button (click)="abrirDibujo()" class="square-btn light-txt">
+                        <fa-icon size="2x" [icon]="faFolderOpen"></fa-icon>
+                    </button>
+                </div>
+
+                <div class="canvas-container">
+                    <canvas #canvas width="800px" height="800px" (pointerdown)="startDrawing($event)"
+                        (pointermove)="draw($event)" (pointerup)="stopDrawing()" (pointercancel)="stopDrawing()"
+                        (pointerleave)="stopDrawing()">
+                    </canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+
+
+@if (mostrarTextPlus()) {
+<app-text-plus [(textoContenido)]="textoAEditar" (cerrar)="cerrar()" (aceptar)="aceptar()"></app-text-plus>
+}

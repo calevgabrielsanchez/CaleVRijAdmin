@@ -1,4 +1,4 @@
-import { Component, EventEmitter, Input, Output, signal } from '@angular/core';
+import { Component, ElementRef, EventEmitter, Input, Output, ViewChild, signal } from '@angular/core';
 
 export interface ProjectFileHandle {
   kind: 'file';
@@ -31,6 +31,8 @@ export interface ProjectLibraryNode {
   children: ProjectLibraryNode[];
 }
 
+interface FallbackNode { path: string; name: string; kind: 'directory' | 'file'; size: number; depth: number }
+
 @Component({
   selector: 'app-project-library-manager',
   standalone: true,
@@ -39,6 +41,7 @@ export interface ProjectLibraryNode {
   host: { '[class.active]': 'active' }
 })
 export class ProjectLibraryManagerComponent {
+  @ViewChild('rootPicker') private rootPicker?: ElementRef<HTMLInputElement>;
   @Input() active = false;
   @Output() readonly bookSelected = new EventEmitter<ProjectLibraryNode | null>();
   @Output() readonly rootHandleChange = new EventEmitter<ProjectDirectoryHandle | null>();
@@ -57,13 +60,16 @@ export class ProjectLibraryManagerComponent {
   readonly imageDialogOpen = signal(false);
   readonly imagePreviewUrl = signal('');
   readonly currentImageName = signal('');
+  readonly fallbackMode = signal(false);
+  readonly fallbackEntries = signal<FallbackNode[]>([]);
 
   constructor() { void this.restoreRoot(); }
 
   async selectRoot(): Promise<void> {
     const picker = (window as DirectoryPickerWindow).showDirectoryPicker;
     if (!picker) {
-      this.statusMessage.set('La selección de carpetas requiere un navegador compatible (Chrome o Edge) y conexión segura.');
+      this.statusMessage.set('Selecciona la carpeta raíz desde el selector del dispositivo.');
+      this.rootPicker?.nativeElement.click();
       return;
     }
     try {
@@ -72,6 +78,8 @@ export class ProjectLibraryManagerComponent {
       if (permission !== 'granted') { this.statusMessage.set('Se necesita permiso de lectura y escritura para usar esta carpeta.'); return; }
       this.rootHandle.set(handle);
       this.rootPath.set(handle.name);
+      this.fallbackMode.set(false);
+      this.fallbackEntries.set([]);
       this.rootHandleChange.emit(handle);
       this.bookSelected.emit(null);
       await this.setSetting('root', handle);
@@ -81,6 +89,45 @@ export class ProjectLibraryManagerComponent {
     } catch (error) {
       if ((error as DOMException)?.name !== 'AbortError') this.statusMessage.set('No se pudo abrir o guardar la carpeta seleccionada.');
     }
+  }
+
+  selectRootFiles(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const files = Array.from(input.files ?? []);
+    input.value = '';
+    if (!files.length) return;
+
+    const firstPath = files[0].webkitRelativePath || files[0].name;
+    const rootName = firstPath.split('/')[0] || 'Biblioteca';
+    const entries = new Map<string, FallbackNode>();
+    for (const file of files) {
+      const parts = (file.webkitRelativePath || file.name).split('/').filter(Boolean).slice(1);
+      let parentPath = '';
+      for (let index = 0; index < parts.length; index++) {
+        const name = parts[index];
+        const path = parentPath ? `${parentPath}/${name}` : name;
+        const isFile = index === parts.length - 1;
+        if (!isFile || !entries.has(path)) {
+          entries.set(path, {
+            path,
+            name,
+            kind: isFile ? 'file' : 'directory',
+            size: isFile ? file.size : 0,
+            depth: index
+          });
+        }
+        if (!isFile) parentPath = path;
+      }
+    }
+
+    this.rootHandle.set(null);
+    this.rootPath.set(rootName);
+    this.libraries.set([]);
+    this.fallbackMode.set(true);
+    this.fallbackEntries.set([...entries.values()].sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true })));
+    this.rootHandleChange.emit(null);
+    this.bookSelected.emit(null);
+    this.statusMessage.set('Carpeta cargada en modo lectura en este dispositivo. Para crear o editar elementos se necesita un selector con permisos de escritura.');
   }
 
   openCreateDialog(level: ProjectNodeLevel, parent: ProjectDirectoryHandle): void {
@@ -172,7 +219,7 @@ export class ProjectLibraryManagerComponent {
       let permission = await handle.queryPermission({ mode: 'readwrite' });
       if (permission !== 'granted') permission = await handle.requestPermission({ mode: 'readwrite' });
       if (permission !== 'granted') { this.statusMessage.set('Vuelve a seleccionar la carpeta raíz para conceder acceso.'); return; }
-      this.rootHandle.set(handle); this.rootPath.set(handle.name); this.rootHandleChange.emit(handle); await this.refreshTree();
+      this.rootHandle.set(handle); this.rootPath.set(handle.name); this.fallbackMode.set(false); this.fallbackEntries.set([]); this.rootHandleChange.emit(handle); await this.refreshTree();
       const lastPath = await this.getSetting<string[]>('lastBookPath');
       const lastBook = lastPath ? this.findBookByPath(lastPath) : null;
       if (lastBook) this.bookSelected.emit(lastBook);

@@ -5,7 +5,10 @@
     <button class="action-button" type="button" (click)="selectRoot()">
       {{ rootPath() ? 'Cambiar carpeta raíz' : 'Seleccionar carpeta raíz' }}
     </button>
-    @if (rootPath()) {
+    <input #rootPicker class="visually-hidden" type="file" webkitdirectory directory multiple aria-label="Seleccionar carpeta raíz" (change)="selectRootFiles($event)">
+    @if (fallbackMode()) {
+      <div class="library-tree fallback-tree" aria-label="Contenido de carpeta raíz"><div class="tree-root"><span aria-hidden="true">📁</span><strong>{{ rootPath() }}</strong><small>{{ fallbackEntries().length }} elementos · solo lectura</small></div>@for (entry of fallbackEntries(); track entry.path) { <div class="fallback-tree-row" [style.padding-left.px]="entry.depth * 18 + 8"><span aria-hidden="true">{{ entry.kind === 'directory' ? '📁' : '📄' }}</span><span class="fallback-entry-name">{{ entry.name }}</span>@if (entry.kind === 'file') { <small>{{ entry.size }} bytes</small> }</div> }</div>
+    } @else if (rootPath()) {
       <div class="library-tree" aria-label="Árbol de bibliotecas">
         <div class="tree-root"><span aria-hidden="true">📁</span><strong>Raíz</strong><small>{{ rootPath() }}</small><button class="tree-action add" aria-label="Agregar biblioteca" title="Agregar biblioteca" (click)="openCreateDialog('biblioteca', rootHandle()!)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M7 12h10"/></svg></button></div>
         @for (library of libraries(); track library.name) {
