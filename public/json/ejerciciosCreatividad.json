@@ -1,0 +1,72 @@
+[
+  {
+    "id": 1,
+    "nombre": "Diálogo entre arquetipos",
+    "descripcion": "Toma dos arquetipos, ponlos en escenarios y haz que dialoguen sobre un tema random."
+  },
+  {
+    "id": 2,
+    "nombre": "Copia al maestro",
+    "descripcion": "Toma una serie, novela, película o historia en general y reescríbela con tu propio estilo."
+  },
+  {
+    "id": 3,
+    "nombre": "Juego de arquetipos",
+    "descripcion": "Toma un personaje de una película que te guste y cámbiale el arquetipo."
+  },
+  {
+    "id": 4,
+    "nombre": "El inventario de la mochila",
+    "descripcion": "Imagina tres objetos cotidianos y aparentemente sin relación que un personaje lleva siempre en su mochila o bolsillos."
+  },
+  {
+    "id": 5,
+    "nombre": "El cuestionario de contradicciones",
+    "descripcion": "Toma a tu protagonista y asígnale una contradicción interna fuerte."
+  },
+  {
+    "id": 6,
+    "nombre": "La regla de oro rota",
+    "descripcion": "Elige una ley física, social o natural de nuestro mundo y cámbiala por completo."
+  },
+  {
+    "id": 7,
+    "nombre": "Arqueología del futuro/pasado",
+    "descripcion": "Diseña una civilización describiendo un único objeto cotidiano que encuentren los arqueólogos dentro de 500 años y el uso completamente erróneo que le den."
+  },
+  {
+    "id": 8,
+    "nombre": "El mapa de restricciones espaciales",
+    "descripcion": "Limita la acción de una escena a un espacio extremadamente reducido y claustrofóbico, obligando a que la tensión dramática avance sin posibilidad de huida física."
+  },
+  {
+    "id": 9,
+    "nombre": "La estructura del dominó",
+    "descripcion": "Escribe una secuencia de cinco eventos donde cada uno ocurra únicamente como consecuencia directa y lógica del fracaso del evento anterior."
+  },
+  {
+    "id": 10,
+    "nombre": "El choque de deseos opuestos",
+    "descripcion": "Coloca a dos personajes en una habitación cerrada donde ambos quieren algo vital, pero la meta es mutuamente excluyente."
+  },
+  {
+    "id": 11,
+    "nombre": "Conflicto interno vs. externo",
+    "descripcion": "Diseña una escena donde el conflicto físico externo sea trivial, pero el conflicto interno sea devastador."
+  },
+  {
+    "id": 12,
+    "nombre": "El giro de la herramienta olvidada",
+    "descripcion": "Plantea un callejón sin salida argumental y rescata un detalle u objeto insignificante mencionado al principio para convertirlo en la solución."
+  },
+  {
+    "id": 13,
+    "nombre": "El final abierto de impacto",
+    "descripcion": "Escribe una escena final donde el conflicto no se resuelva de forma tradicional, obligando al lector a deducir el destino a través de una imagen poética o simbólica."
+  },
+  {
+    "id": 14,
+    "nombre": "SCAMPER",
+    "descripcion": "S - Sustituir (Substitute):¿Qué se puede reemplazar, cambiar o sustituir (materiales, personas, procesos, lugares)?\nC - Combinar (Combine):¿Qué ideas, funciones o elementos se pueden fusionar para crear algo nuevo o mejorar el rendimiento?\nA - Adaptar (Adapt):¿Qué se puede ajustar, modificar o traer de otro contexto para que sirva en este problema?\nM - Modificar / Magnificar (Modify):¿Qué se puede ampliar, reducir, exagerar o cambiar de forma, color o tamaño?\nP - Proponer otros usos (Put to another use):¿Cómo se podría usar este producto, servicio o idea en un contexto totalmente diferente?\nE - Eliminar (Eliminate):¿Qué partes, funciones o procesos se pueden suprimir, simplificar o minimizar al máximo?\nR - Reordenar / Invertir (Rearrange / Reverse):¿Qué pasaría si se cambia el orden de los pasos, se hace el proceso a la inversa o se reorganiza la estructura?"
+  }
+]

@@ -41,6 +41,7 @@ export interface ProjectLibraryNode {
 export class ProjectLibraryManagerComponent {
   @Input() active = false;
   @Output() readonly bookSelected = new EventEmitter<ProjectLibraryNode | null>();
+  @Output() readonly rootHandleChange = new EventEmitter<ProjectDirectoryHandle | null>();
 
   readonly rootHandle = signal<ProjectDirectoryHandle | null>(null);
   readonly rootPath = signal('');
@@ -71,6 +72,7 @@ export class ProjectLibraryManagerComponent {
       if (permission !== 'granted') { this.statusMessage.set('Se necesita permiso de lectura y escritura para usar esta carpeta.'); return; }
       this.rootHandle.set(handle);
       this.rootPath.set(handle.name);
+      this.rootHandleChange.emit(handle);
       this.bookSelected.emit(null);
       await this.setSetting('root', handle);
       await this.setSetting('lastBookPath', null);
@@ -170,7 +172,7 @@ export class ProjectLibraryManagerComponent {
       let permission = await handle.queryPermission({ mode: 'readwrite' });
       if (permission !== 'granted') permission = await handle.requestPermission({ mode: 'readwrite' });
       if (permission !== 'granted') { this.statusMessage.set('Vuelve a seleccionar la carpeta raíz para conceder acceso.'); return; }
-      this.rootHandle.set(handle); this.rootPath.set(handle.name); await this.refreshTree();
+      this.rootHandle.set(handle); this.rootPath.set(handle.name); this.rootHandleChange.emit(handle); await this.refreshTree();
       const lastPath = await this.getSetting<string[]>('lastBookPath');
       const lastBook = lastPath ? this.findBookByPath(lastPath) : null;
       if (lastBook) this.bookSelected.emit(lastBook);

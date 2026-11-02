@@ -2,9 +2,11 @@
   <section class="project-library-manager" aria-label="Administración de bibliotecas">
     <h2>Bibliotecas</h2>
     <p>Selecciona la carpeta raíz donde se organizarán tus bibliotecas.</p>
+    <button class="action-button" type="button" (click)="selectRoot()">
+      {{ rootPath() ? 'Cambiar carpeta raíz' : 'Seleccionar carpeta raíz' }}
+    </button>
     @if (rootPath()) {
       <div class="library-tree" aria-label="Árbol de bibliotecas">
-        <button class="action-button" type="button" (click)="selectRoot()">Raíz Estudio</button>
         <div class="tree-root"><span aria-hidden="true">📁</span><strong>Raíz</strong><small>{{ rootPath() }}</small><button class="tree-action add" aria-label="Agregar biblioteca" title="Agregar biblioteca" (click)="openCreateDialog('biblioteca', rootHandle()!)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M7 12h10"/></svg></button></div>
         @for (library of libraries(); track library.name) {
           <div class="tree-level level-0">

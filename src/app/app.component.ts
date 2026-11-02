@@ -8,6 +8,7 @@ import { DataSectionComponent } from './components/data-section.component';
 import { AboutSectionComponent } from './components/about-section.component';
 import { ViewContentComponent, ViewContentMode } from './components/view-content.component/view-content.component';
 import { ProjectDirectoryHandle as DirectoryHandle, ProjectLibraryManagerComponent, ProjectLibraryNode as TreeNode } from './components/view-content.component/project-library-manager.component';
+import { CreatividadComponent } from './components/creatividad.component/creatividad.component';
 
 interface AppSection {
   key: string;
@@ -22,7 +23,7 @@ interface AppSection {
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [TextPlusComponent, LibraryTreeComponent, MainMenuComponent, SpreadsheetSectionComponent, ReproductorComponent, DataSectionComponent, AboutSectionComponent, ViewContentComponent, ProjectLibraryManagerComponent],
+  imports: [TextPlusComponent, LibraryTreeComponent, MainMenuComponent, SpreadsheetSectionComponent, ReproductorComponent, DataSectionComponent, AboutSectionComponent, ViewContentComponent, ProjectLibraryManagerComponent, CreatividadComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -34,8 +35,9 @@ export class AppComponent {
   readonly sections: readonly AppSection[] = [
     { key: 'inicio', label: 'Libro', icon: '▤', title: 'Libro', description: 'Abre un libro desde el árbol de bibliotecas para editar sus hojas.', cardTitle: 'Tus hojas', cardText: 'Cada libro conserva sus celdas, formatos y hojas.' },
     { key: 'reproductor', label: 'Reproductor', icon: '⏯', title: 'Reproductor', description: 'Reproductor multimedia.', cardTitle: 'Reproducción', cardText: 'Controles y contenido multimedia.' },
-    { key: 'datos', label: 'Datos', icon: '▤', title: 'Datos de la aplicación', description: 'Ejemplo de una sección para contenido, listados, ajustes o información.', cardTitle: 'Contenido de ejemplo', cardText: 'La navegación cambia de pantalla sin recargar la aplicación.' },
-    { key: 'acerca', label: 'Acerca', icon: 'ⓘ', title: 'Acerca de esta plantilla', description: 'Plantilla Angular y Capacitor con carcasa retro metálica.', cardTitle: 'Estilo homologado', cardText: 'Conserva la estructura visual y personaliza colores, nombre, secciones y funciones.' }
+    { key: 'mente', label: 'Mente', icon: '♠', title: 'Mente', description: 'Organiza personalidades, valores, miedos y emociones.', cardTitle: 'Mente', cardText: 'Datos guardados localmente dentro de la raíz de biblioteca.' },
+    { key: 'acerca', label: 'Acerca', icon: 'ⓘ', title: 'Acerca de esta plantilla', description: 'Plantilla Angular y Capacitor con carcasa retro metálica.', cardTitle: 'Estilo homologado', cardText: 'Conserva la estructura visual y personaliza colores, secciones y funciones.' }
+   
   ];
   readonly activeKey = signal(this.sections[0].key);
   readonly menuReturnKey = signal(this.sections[0].key);
@@ -51,6 +53,7 @@ export class AppComponent {
   readonly sheets = signal<SheetData[]>([{ name: 'Hoja 1', cells: {}, extraTexts: {}, formats: {}, merges: {}, columnWidths: {}, rowHeights: {} }]);
   readonly currentSheetIndex = signal(0);
   readonly currentBook = signal<TreeNode | null>(null);
+  readonly projectLibraryRoot = signal<DirectoryHandle | null>(null);
   readonly selectionAnchor = signal<[number, number]>([0, 0]);
   readonly selectionEnd = signal<[number, number]>([0, 0]);
   readonly backgroundColor = signal('#ffffff');
@@ -134,6 +137,8 @@ export class AppComponent {
     if (!book) { this.currentBook.set(null); return; }
     void this.openBook(book);
   }
+
+  setProjectLibraryRoot(root: DirectoryHandle | null): void { this.projectLibraryRoot.set(root); }
 
   playLibraryFile(file: File): void {
     this.selectedLibraryFile.set(file);

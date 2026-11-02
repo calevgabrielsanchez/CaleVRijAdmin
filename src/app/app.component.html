@@ -12,7 +12,7 @@
   </header>
   <section class="content-frame" [class.spreadsheet-screen]="activeKey() === 'inicio' || activeKey() === 'libro'" [class.library-tree-screen]="activeKey() === 'library-tree' || activeKey() === 'status'" [class.player-screen]="activeKey() === 'reproductor'" aria-live="polite" aria-atomic="true">
     <div class="screen-heading"><span class="screen-tag">{{ activeKey() === 'libro' ? currentBook()?.name : activeKey() === 'reproductor' ? currentPlayerFileName() || 'PANTALLA' : activeKey() === 'menu' ? 'MENÚ PRINCIPAL' : 'PANTALLA' }}</span><span class="screen-counter">{{ activeKey() === 'status' ? 'STATUS' : activeKey() === 'menu' ? 'MENU' : activeKey() === 'libro' ? 'LIBRO' : (activeIndex() + 1).toString().padStart(2, '0') + ' / ' + sections.length.toString().padStart(2, '0') }}</span></div>
-    <app-project-library-manager [active]="activeKey() === 'status'" (bookSelected)="onProjectBookSelected($event)"></app-project-library-manager>
+     <app-project-library-manager [active]="activeKey() === 'status'" (bookSelected)="onProjectBookSelected($event)" (rootHandleChange)="setProjectLibraryRoot($event)"></app-project-library-manager>
     @if (activeKey() === 'menu') {
       <app-view-content mode="standard">
         <div class="main-menu-screen"><h2>Menú principal</h2><p>Selecciona una sección.</p><app-main-menu [items]="sections" [activeKey]="menuReturnKey() === 'libro' ? 'inicio' : menuReturnKey()" (selected)="navigate($event)"></app-main-menu></div>
@@ -29,10 +29,12 @@
         <app-data-section></app-data-section>
       } @else if (activeKey() === 'acerca') {
         <app-about-section></app-about-section>
+      } @else if (activeKey() === 'mente') {
+        <app-creatividad [libraryRoot]="projectLibraryRoot()"></app-creatividad>
       } @else {
         <p class="helper-text">Selecciona una sección del menú.</p>
       }
-    </app-view-content>
+    </app-view-content> 
     }
   </section>
   @if (activeKey() !== 'menu') { <app-main-menu [items]="sections" [activeKey]="activeKey()" (selected)="navigate($event)"></app-main-menu> }

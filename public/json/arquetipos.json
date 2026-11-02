@@ -1,0 +1,306 @@
+[
+  {
+    "id": 1,
+    "nombre": "El Inocente",
+    "descripcion": "Busca la felicidad y la libertad.",
+    "ejemplos": "Forrest Gump, el niño de El Principito",
+    "frase_tipica": "Todo saldrá bien si mantenemos la fe.",
+    "categoria": "Jung"
+  },
+  {
+    "id": 2,
+    "nombre": "El Huérfano / Buscador",
+    "descripcion": "Busca pertenencia y conexión.",
+    "ejemplos": "Harry Potter",
+    "frase_tipica": "Solo quiero encajar en algún lugar.",
+    "categoria": "Jung"
+  },
+  {
+    "id": 3,
+    "nombre": "El Héroe",
+    "descripcion": "Busca vencer al mal y salvar a otros.",
+    "ejemplos": "Aquiles, Superman",
+    "frase_tipica": "Tengo que hacer lo correcto, cueste lo que cueste.",
+    "categoria": "Jung"
+  },
+  {
+    "id": 4,
+    "nombre": "El Cuidador",
+    "descripcion": "Busca proteger y nutrir.",
+    "ejemplos": "Mary Poppins, la señora Weasley",
+    "frase_tipica": "Asegúrate de abrigarte bien antes de salir.",
+    "categoria": "Jung"
+  },
+  {
+    "id": 5,
+    "nombre": "El Explorador",
+    "descripcion": "Busca libertad y descubrir lo nuevo.",
+    "ejemplos": "Indiana Jones, Moana",
+    "frase_tipica": "Hay todo un mundo allá fuera esperando ser descubierto.",
+    "categoria": "Jung"
+  },
+  {
+    "id": 6,
+    "nombre": "El Rebelde",
+    "descripcion": "Busca derribar lo establecido.",
+    "ejemplos": "Tyler Durden de El Club de la Lucha",
+    "frase_tipica": "Las reglas están hechas para romperse.",
+    "categoria": "Jung"
+  },
+  {
+    "id": 7,
+    "nombre": "El Amante",
+    "descripcion": "Busca la intimidad y la pasión.",
+    "ejemplos": "Romeo, Heathcliff de Cumbres Borrascosas",
+    "frase_tipica": "No puedo vivir ni un solo instante sin ti.",
+    "categoria": "Jung"
+  },
+  {
+    "id": 8,
+    "nombre": "El Creador / Artista",
+    "descripcion": "Busca dar forma a algo nuevo y significativo.",
+    "ejemplos": "Dr. Frankenstein, Willy Wonka",
+    "frase_tipica": "Mira lo que soy capaz de construir.",
+    "categoria": "Jung"
+  },
+  {
+    "id": 9,
+    "nombre": "El Mago",
+    "descripcion": "Busca entender las leyes del universo y transformar la realidad.",
+    "ejemplos": "Gandalf, Dumbledore",
+    "frase_tipica": "Todo es posible si conoces los secretos adecuados.",
+    "categoria": "Jung"
+  },
+  {
+    "id": 10,
+    "nombre": "El Sabio",
+    "descripcion": "Busca la verdad y el conocimiento.",
+    "ejemplos": "Yoda, Sherlock Holmes",
+    "frase_tipica": "La verdad os hará libres.",
+    "categoria": "Jung"
+  },
+  {
+    "id": 11,
+    "nombre": "El Bufón",
+    "descripcion": "Busca vivir el momento y reírse de la vida.",
+    "ejemplos": "Deadpool, el Sombrerero Loco",
+    "frase_tipica": "¿Por qué tan serio?",
+    "categoria": "Jung"
+  },
+  {
+    "id": 12,
+    "nombre": "El Gobernante",
+    "descripcion": "Busca el poder y el control para mantener el orden.",
+    "ejemplos": "Rey Arturo, Miranda Priestly en El Diablo viste a la moda",
+    "frase_tipica": "Aquí las cosas se hacen a mi manera o no se hacen.",
+    "categoria": "Jung"
+  },
+  {
+    "id": 13,
+    "nombre": "El Héroe",
+    "descripcion": "El protagonista que cambia y crece.",
+    "ejemplos": "Luke Skywalker, Katniss Everdeen",
+    "frase_tipica": "Debo aceptar mi destino.",
+    "categoria": "Viaje del Héroe"
+  },
+  {
+    "id": 14,
+    "nombre": "El Mentor",
+    "descripcion": "El que enseña y da las herramientas.",
+    "ejemplos": "Obi-Wan",
+    "frase_tipica": "Usa la Fuerza, confía en tus instintos.",
+    "categoria": "Viaje del Héroe"
+  },
+  {
+    "id": 15,
+    "nombre": "El Guardián del Umbral",
+    "descripcion": "El que pone la primera prueba para ver si el héroe es digno.",
+    "ejemplos": "el troll en el puente",
+    "frase_tipica": "Nadie cruza por aquí sin demostrar su valor.",
+    "categoria": "Viaje del Héroe"
+  },
+  {
+    "id": 16,
+    "nombre": "El Heraldo / Mensajero",
+    "descripcion": "El que anuncia el cambio y llama a la aventura.",
+    "ejemplos": "la carta de Hogwarts",
+    "frase_tipica": "Los tiempos están cambiando, tu aventura comienza.",
+    "categoria": "Viaje del Héroe"
+  },
+  {
+    "id": 17,
+    "nombre": "El Cambiaformas",
+    "descripcion": "El personaje ambiguo, que no sabes si es aliado o enemigo.",
+    "ejemplos": "Severus Snape",
+    "frase_tipica": "Nunca sabrás de qué lado estoy realmente.",
+    "categoria": "Viaje del Héroe"
+  },
+  {
+    "id": 18,
+    "nombre": "La Sombra",
+    "descripcion": "El antagonista puro, el lado oscuro.",
+    "ejemplos": "Voldemort",
+    "frase_tipica": "No hay escapatoria, el fin está cerca.",
+    "categoria": "Viaje del Héroe"
+  },
+  {
+    "id": 19,
+    "nombre": "El Trickster / Bufón",
+    "descripcion": "El que aligera la tensión con caos y travesuras.",
+    "ejemplos": "Loki",
+    "frase_tipica": "¿Acaso esperabas que fuera aburrido?",
+    "categoria": "Viaje del Héroe"
+  },
+  {
+    "id": 20,
+    "nombre": "El Aliado",
+    "descripcion": "El compañero leal que acompaña al héroe.",
+    "ejemplos": "Sam en El Señor de los Anillos",
+    "frase_tipica": "Yo no puedo llevar el anillo por usted señor, ¡pero puedo llevarlo a usted!",
+    "categoria": "Viaje del Héroe"
+  },
+  {
+    "id": 21,
+    "nombre": "El Monstruo",
+    "descripcion": "La amenaza pura e irracional.",
+    "ejemplos": "El monstruo de Frankenstein, Godzilla",
+    "frase_tipica": "Grrr... (Rugido destructivo)",
+    "categoria": "Viaje del Héroe"
+  },
+  {
+    "id": 22,
+    "nombre": "El Tesoro Escondido",
+    "descripcion": "El objetivo que parece inalcanzable.",
+    "ejemplos": "El Santo Grial, el Vellocino de Oro",
+    "frase_tipica": "Dicen que aquel que lo encuentre tendrá poder absoluto.",
+    "categoria": "Christopher Booker"
+  },
+  {
+    "id": 23,
+    "nombre": "La Doncella / El Príncipe",
+    "descripcion": "El personaje que debe ser rescatado o que necesita ser despertado.",
+    "ejemplos": "Bella Durmiente, Rapunzel",
+    "frase_tipica": "¿Vendrá alguien a sacarme de aquí?",
+    "categoria": "Christopher Booker"
+  },
+  {
+    "id": 24,
+    "nombre": "El Viejo Sabio",
+    "descripcion": "Similar al Mentor, pero más anciano y misterioso.",
+    "ejemplos": "Merlín, El Oráculo de Delfos",
+    "frase_tipica": "Las respuestas que buscas ya viven en tu interior.",
+    "categoria": "Christopher Booker"
+  },
+  {
+    "id": 25,
+    "nombre": "El Animal / Pícaro",
+    "descripcion": "El personaje que actúa por instinto y rompe las reglas sociales.",
+    "ejemplos": "Pinocho, El Gato con Botas",
+    "frase_tipica": "Prefiero pedir perdón que pedir permiso.",
+    "categoria": "Christopher Booker"
+  },
+  {
+    "id": 26,
+    "nombre": "El Jefe / La Autoridad",
+    "descripcion": "El que impone las normas (similar al Gobernante).",
+    "ejemplos": "El Comandante, el Director de la escuela",
+    "frase_tipica": "Aquí se siguen los protocolos al pie de la letra.",
+    "categoria": "Christopher Booker"
+  },
+  {
+    "id": 27,
+    "nombre": "El Esposo / Esposa Ideal",
+    "descripcion": "El complemento perfecto que da estabilidad.",
+    "ejemplos": "El compañero fiel del protagonista en dramas familiares",
+    "frase_tipica": "Tranquilo, juntos vamos a salir adelante.",
+    "categoria": "Christopher Booker"
+  },
+  {
+    "id": 28,
+    "nombre": "El Antihéroe",
+    "descripcion": "No es malvado, pero tampoco moralmente recto. Actúa por egoísmo o despecho, pero termina haciendo lo correcto.",
+    "ejemplos": "Tony Soprano, BoJack Horseman",
+    "frase_tipica": "Lo hago por mí, no por ustedes.",
+    "categoria": "Modernos o Literarios"
+  },
+  {
+    "id": 29,
+    "nombre": "El Narrador No Confiable",
+    "descripcion": "Su arquetipo es la duda; no sabes si es víctima o villano.",
+    "ejemplos": "el protagonista de El Club de la Lucha",
+    "frase_tipica": "Te juro que las cosas pasaron exactamente como te las cuento.",
+    "categoria": "Modernos o Literarios"
+  },
+  {
+    "id": 30,
+    "nombre": "El Espejo",
+    "descripcion": "Un personaje que refleja lo que el protagonista odia de sí mismo, obligándolo a confrontarse.",
+    "ejemplos": "Un rival directo o un doble oscuro",
+    "frase_tipica": "Tú y yo somos exactamente iguales.",
+    "categoria": "Modernos o Literarios"
+  },
+  {
+    "id": 31,
+    "nombre": "El Fantasma",
+    "descripcion": "No es un personaje físico, sino una voz del pasado que persigue al héroe.",
+    "ejemplos": "la madre de Norman Bates",
+    "frase_tipica": "Nunca podrás escapar de lo que hiciste.",
+    "categoria": "Modernos o Literarios"
+  },
+  {
+    "id": 32,
+    "nombre": "Straight Man (El sensato / El adulto funcional)",
+    "descripcion": "Es el ancla de la realidad. Reacciona con incredulidad, vergüenza o lógica ante el caos de los demás.",
+    "frase_tipica": "¿En serio estáis haciendo esto?",
+    "ejemplos": "Monica (Friends), Jim Halpert (The Office), Robin (Cómo conocí a vuestra madre), Frasier",
+    "categoria": "Sitcom"
+  },
+  {
+    "id": 33,
+    "nombre": "Tonto Útil / El Pícaro (The Fool)",
+    "descripcion": "Es el que comete los errores sociales, dice lo inapropiado o tiene ideas absurdas que desencadenan la trama.",
+    "frase_tipica": "Tengo un plan... (y es un desastre)",
+    "ejemplos": "Joey (Friends), Michael Scott (The Office), Barney Stinson, Kramer (Seinfeld)",
+    "categoria": "Sitcom"
+  },
+  {
+    "id": 34,
+    "nombre": "La Controladora / La Organizadora (The Monster)",
+    "descripcion": "Es la que mantiene el orden y choca constantemente con el Pícaro debido a su obsesión por el control.",
+    "frase_tipica": "Si no se hace a mi manera, explota.",
+    "ejemplos": "Monica (Friends), Leslie Knope (Parks and Rec), Sheldon Cooper",
+    "categoria": "Sitcom"
+  },
+  {
+    "id": 35,
+    "nombre": "La Pareja Disfuncional (El Tándem Romántico)",
+    "descripcion": "Son dos personajes opuestos con tensión romántica no resuelta que actúan como motor emocional.",
+    "frase_tipica": "Somos solo amigos... ¿verdad?",
+    "ejemplos": "Ross y Rachel (Friends), Sam y Diane (Cheers), Jim y Pam (The Office)",
+    "categoria": "Sitcom"
+  },
+  {
+    "id": 36,
+    "nombre": "El Excéntrico / El Bicho Raro (The Eccentric)",
+    "descripcion": "Aporta el humor surrealista o absurdo con una lógica interna particular que dice verdades incómodas.",
+    "frase_tipica": "Es que yo veo el mundo de otra manera.",
+    "ejemplos": "Phoebe Buffay (Friends), April Ludgate (Parks and Rec), Cosmo Kramer, Troy y Abed (Community)",
+    "categoria": "Sitcom"
+  },
+  {
+    "id": 37,
+    "nombre": "El Sabelotodo / El Elitista (The Nerd / Snob)",
+    "descripcion": "Tiene un conocimiento obsesivo sobre un tema que usa para sentirse superior, terminando siendo víctima de su arrogancia.",
+    "frase_tipica": "Bueno, en realidad, técnicamente...",
+    "ejemplos": "Ross (Friends), Sheldon (Big Bang), Frasier y Niles (Frasier)",
+    "categoria": "Sitcom"
+  },
+  {
+    "id": 38,
+    "nombre": "El Punchline / El Alivio Cómico de Reparto (The Foil)",
+    "descripcion": "Personaje secundario que aparece poco para soltar la frase más absurda y romper la dinámica del grupo.",
+    "frase_tipica": "Yo solo venía a dejar esto...",
+    "ejemplos": "Gunther (Friends), Creed Bratton (The Office)",
+    "categoria": "Sitcom"
+  }
+]
