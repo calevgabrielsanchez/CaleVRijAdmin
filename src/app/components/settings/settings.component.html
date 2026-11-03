@@ -1,0 +1,104 @@
+<section class="settings-page" aria-label="Settings">
+  <header class="settings-header">
+    <button type="button" class="settings-menu-button" aria-label="Abrir menú de Settings" [attr.aria-expanded]="menuOpen()" (click)="toggleMenu()">☰</button>
+    <div><span class="settings-eyebrow">PREFERENCIAS</span><h2>{{ pageTitle }}</h2></div>
+  </header>
+
+  @if (menuOpen()) {
+    <div class="settings-menu-backdrop" (click)="$event.target === $event.currentTarget && toggleMenu()">
+      <nav class="settings-menu" aria-label="Menú de Settings">
+        <h3>Menú de Settings</h3>
+        <button type="button" [class.selected]="activePage() === 'sync'" (click)="selectPage('sync')">Sincronización P2P</button>
+        <button type="button" [class.selected]="activePage() === 'about'" (click)="selectPage('about')">Acerca de</button>
+      </nav>
+    </div>
+  }
+
+  <main class="settings-content">
+    @switch (activePage()) {
+      @case ('sync') {
+        <div class="sync-layout">
+          <article class="settings-card intro-card">
+            <div class="drive-heading"><span class="drive-icon" aria-hidden="true">⇄</span><div><h3>Sincronización directa entre dispositivos</h3><p>Conecta dos aplicaciones CaleVRijAdmin por P2P con WebRTC. Los archivos viajan directamente de un dispositivo al otro, sin pasar por Google Drive ni por un servidor de archivos.</p></div></div>
+            <p class="settings-help">Ambos dispositivos deben tener abierta esta pantalla y la carpeta raíz de su biblioteca seleccionada. Los códigos de conexión se comparten manualmente (por mensaje, correo o USB) y solo sirven para esta sesión.</p>
+            <p class="settings-help">La sincronización copia archivos nuevos y actualiza los que tengan una fecha de modificación más reciente. No elimina archivos. Si la red bloquea WebRTC, prueba con ambos dispositivos en la misma red Wi-Fi.</p>
+            <p class="settings-help">La app guarda un archivo oculto <code>.calevri-sync.json</code> en la raíz para recordar las fechas de los archivos recibidos y no volver a descargarlos.</p>
+            <p class="root-status">{{ libraryRoot ? 'Raíz local lista: ' + libraryRoot.name : 'Sin raíz local. Abre el panel de biblioteca con Menu y selecciona la carpeta raíz.' }}</p>
+            @if (formMessage) { <p class="settings-alert" role="alert">{{ formMessage }}</p> }
+          </article>
+
+          <div class="sync-steps">
+            <article class="settings-card step-card">
+              <span class="step-number">1</span>
+              <h3>Dispositivo A · Crear invitación</h3>
+              <p>Crea el código en el dispositivo que inicia la conexión y compártelo con el otro dispositivo.</p>
+              <button type="button" [disabled]="!libraryRoot || sync.syncing() || sync.connected()" (click)="createInvitation()">Crear código de invitación</button>
+              @if (sync.invitationCode()) {
+                <label for="invitation-code">Código de invitación</label>
+                <textarea id="invitation-code" readonly rows="5">{{ sync.invitationCode() }}</textarea>
+                <button type="button" class="secondary-button" (click)="copy(sync.invitationCode(), 'invitación')">Copiar invitación</button>
+              }
+              @if (copiedLabel() === 'invitación') { <span class="copy-note">Copiada al portapapeles.</span> }
+            </article>
+
+            <article class="settings-card step-card">
+              <span class="step-number">2</span>
+              <h3>Dispositivo B · Generar respuesta</h3>
+              <p>Pega el código de invitación del dispositivo A y genera el código de respuesta.</p>
+              <label for="invitation-input">Código de invitación recibido</label>
+              <textarea id="invitation-input" rows="5" placeholder="Pega aquí el código de invitación…" [value]="invitationInput" (input)="invitationInput = $any($event.target).value"></textarea>
+              <button type="button" [disabled]="!libraryRoot || !invitationInput.trim() || sync.syncing() || sync.connected()" (click)="generateAnswer()">Generar respuesta</button>
+              @if (sync.answerCode()) {
+                <label for="answer-code">Código de respuesta</label>
+                <textarea id="answer-code" readonly rows="5">{{ sync.answerCode() }}</textarea>
+                <button type="button" class="secondary-button" (click)="copy(sync.answerCode(), 'respuesta')">Copiar respuesta</button>
+              }
+              @if (copiedLabel() === 'respuesta') { <span class="copy-note">Copiada al portapapeles.</span> }
+            </article>
+          </div>
+
+          <article class="settings-card step-card">
+            <span class="step-number">3</span>
+            <h3>Dispositivo A · Conectar</h3>
+            <p>Pega el código de respuesta que generó el dispositivo B. La sincronización comienza automáticamente al conectar.</p>
+            <label for="answer-input">Código de respuesta recibido</label>
+            <textarea id="answer-input" rows="5" placeholder="Pega aquí el código de respuesta…" [value]="answerInput" (input)="answerInput = $any($event.target).value"></textarea>
+            <button type="button" [disabled]="!answerInput.trim() || sync.connected()" (click)="connect()">Conectar y sincronizar</button>
+          </article>
+
+          <article class="settings-card status-card">
+            <div class="status-heading"><h3>Estado de la conexión</h3><span class="state-pill" [attr.data-state]="sync.state()">{{ stateLabel() }}</span></div>
+            <p class="status-message">{{ sync.message() || 'Todavía no hay una conexión iniciada.' }}</p>
+            <div class="status-actions">
+              @if (sync.connected()) {
+                <button type="button" [disabled]="sync.syncing()" (click)="resync()">Sincronizar de nuevo</button>
+                <button type="button" class="secondary-button" (click)="disconnect()">Desconectar</button>
+              } @else if (sync.state() !== 'idle') {
+                <button type="button" class="secondary-button" (click)="disconnect()">Cancelar</button>
+              }
+            </div>
+            @if (sync.log().length) {
+              <pre class="sync-log" aria-label="Registro de sincronización">{{ sync.log().join('\n') }}</pre>
+            }
+          </article>
+        </div>
+      }
+      @case ('about') {
+        <article class="settings-card about-card">
+          <span class="about-mark" aria-hidden="true">CV</span>
+          <div>
+            <h3>CaleVRijAdmin</h3>
+            <p>Administrador de proyectos para organizar bibliotecas y contenido creativo.</p>
+            <ul>
+              <li>Hojas de cálculo editables y guardadas por libro.</li>
+              <li>Library Tree para explorar archivos multimedia.</li>
+              <li>Reproductor de audio, video, imágenes y PDF.</li>
+              <li>Sincronización P2P directa entre dispositivos.</li>
+            </ul>
+            <p class="about-version">Versión <strong>v1.0.0</strong> · Angular y Capacitor.</p>
+          </div>
+        </article>
+      }
+    }
+  </main>
+</section>

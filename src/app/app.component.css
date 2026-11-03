@@ -13,6 +13,10 @@
 .content-frame.player-screen { display: flex; flex-direction: column; overflow: hidden; }
 .content-frame.player-screen > app-view-content { display: flex; flex: 1 1 auto; width: 100%; min-height: 0; overflow: hidden; }
 .content-frame.player-screen .view-content { min-height: 0; overflow: hidden; }
+.content-frame.settings-screen { display: flex; flex-direction: column; overflow: hidden; }
+.content-frame.settings-screen > app-view-content { display: flex; flex: 1 1 auto; width: 100%; min-height: 0; overflow: hidden; }
+.content-frame.settings-screen .view-content { display: flex; flex: 1 1 auto; min-height: 0; flex-direction: column; overflow: hidden; }
+.content-frame.settings-screen .screen-heading { flex: 0 0 auto; }
 .screen-heading, .view-content { position: relative; z-index: 1; }.screen-heading { display: flex; justify-content: space-between; margin-bottom: 16px; color: #263f93; font-size: 9px; font-weight: 900; letter-spacing: .1em; }.screen-tag { color: #d52b72; }.view-content h2, .view-content h3 { margin: 0 0 9px; color: #142754; text-shadow: 1px 1px #a5edff; }.view-content h2 { font-family: "Courier New", monospace; font-size: 23px; }.view-content p { line-height: 1.5; }
 .hero-card, .info-card { margin-bottom: 13px; padding: 16px; border: 2px solid var(--screen-line); background: linear-gradient(145deg, #ffe55b, #f29a43); box-shadow: inset 0 0 0 2px #fff5a4, inset 0 -6px 15px #b34e3d33; }.hero-card p, .info-card p { margin: 6px 0 0; }.card-label { display: block; margin-bottom: 8px; color: #d52b72; font-size: 9px; font-weight: 900; letter-spacing: .12em; }.info-card { background: #bcecff; box-shadow: inset 0 0 0 2px #e9fbff; }
 .action-button { min-height: 40px; margin-top: 10px; padding: 9px 13px; border: 2px solid #176638; background: #83df93; color: #103d2b; font-weight: 800; cursor: pointer; }.action-button:hover { filter: brightness(1.08); }.demo-output { min-height: 20px; margin-top: 10px; color: #263f93; font-size: 12px; font-weight: 700; }

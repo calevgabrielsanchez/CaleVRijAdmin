@@ -5,7 +5,7 @@ import { MainMenuComponent } from './components/main-menu.component/main-menu.co
 import { CellFormat, SheetData, SpreadsheetSectionComponent, SpreadsheetViewModel } from './components/spreadsheet-section.component/spreadsheet-section.component';
 import { ReproductorComponent } from './components/reproductor-section.component/reproductor.component';
 import { DataSectionComponent } from './components/data-section.component';
-import { AboutSectionComponent } from './components/about-section.component';
+import { SettingsComponent } from './components/settings/settings.component';
 import { ViewContentComponent, ViewContentMode } from './components/view-content.component/view-content.component';
 import { ProjectDirectoryHandle as DirectoryHandle, ProjectLibraryManagerComponent, ProjectLibraryNode as TreeNode } from './components/view-content.component/project-library-manager.component';
 import { CreatividadComponent } from './components/creatividad.component/creatividad.component';
@@ -23,7 +23,7 @@ interface AppSection {
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [TextPlusComponent, LibraryTreeComponent, MainMenuComponent, SpreadsheetSectionComponent, ReproductorComponent, DataSectionComponent, AboutSectionComponent, ViewContentComponent, ProjectLibraryManagerComponent, CreatividadComponent],
+  imports: [TextPlusComponent, LibraryTreeComponent, MainMenuComponent, SpreadsheetSectionComponent, ReproductorComponent, DataSectionComponent, SettingsComponent, ViewContentComponent, ProjectLibraryManagerComponent, CreatividadComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -36,14 +36,14 @@ export class AppComponent {
     { key: 'inicio', label: 'Libro', icon: '▤', title: 'Libro', description: 'Abre un libro desde el árbol de bibliotecas para editar sus hojas.', cardTitle: 'Tus hojas', cardText: 'Cada libro conserva sus celdas, formatos y hojas.' },
     { key: 'reproductor', label: 'Reproductor', icon: '⏯', title: 'Reproductor', description: 'Reproductor multimedia.', cardTitle: 'Reproducción', cardText: 'Controles y contenido multimedia.' },
     { key: 'mente', label: 'Mente', icon: '♠', title: 'Mente', description: 'Organiza personalidades, valores, miedos y emociones.', cardTitle: 'Mente', cardText: 'Datos guardados localmente dentro de la raíz de biblioteca.' },
-    { key: 'acerca', label: 'Acerca', icon: 'ⓘ', title: 'Acerca de esta plantilla', description: 'Plantilla Angular y Capacitor con carcasa retro metálica.', cardTitle: 'Estilo homologado', cardText: 'Conserva la estructura visual y personaliza colores, secciones y funciones.' }
+    { key: 'settings', label: 'Settings', icon: '⚙', title: 'Settings', description: 'Configuración y sincronización de bibliotecas.', cardTitle: 'Sincronización P2P', cardText: 'Sincroniza los archivos de la biblioteca directamente entre dispositivos.' }
    
   ];
   readonly activeKey = signal(this.sections[0].key);
   readonly menuReturnKey = signal(this.sections[0].key);
   readonly activeSection = computed(() => this.sections.find((section) => section.key === this.activeKey()) ?? this.sections[0]);
   readonly activeIndex = computed(() => this.sections.findIndex((section) => section.key === this.activeKey()));
-  readonly viewContentMode = computed<ViewContentMode>(() => this.activeKey() === 'inicio' || this.activeKey() === 'libro' ? 'spreadsheet' : this.activeKey() === 'library-tree' ? 'library-tree' : this.activeKey() === 'reproductor' ? 'player' : 'standard');
+  readonly viewContentMode = computed<ViewContentMode>(() => this.activeKey() === 'inicio' || this.activeKey() === 'libro' ? 'spreadsheet' : this.activeKey() === 'library-tree' ? 'library-tree' : this.activeKey() === 'reproductor' ? 'player' : this.activeKey() === 'settings' ? 'settings' : 'standard');
   readonly paused = signal(false);
   readonly actionMessage = signal('');
   readonly selectedLibraryFile = signal<File | null>(null);

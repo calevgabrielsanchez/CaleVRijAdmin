@@ -1,6 +1,6 @@
 import { Component, Input, ViewEncapsulation } from '@angular/core';
 
-export type ViewContentMode = 'standard' | 'spreadsheet' | 'library-tree' | 'player';
+export type ViewContentMode = 'standard' | 'spreadsheet' | 'library-tree' | 'player' | 'settings';
 
 @Component({
   selector: 'app-view-content',
