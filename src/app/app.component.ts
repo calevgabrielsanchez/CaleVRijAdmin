@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, ViewChild, computed, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ViewChild, computed, inject, signal } from '@angular/core';
 import { TextPlusComponent } from './components/text-plus.component/text-plus.component';
 import { LibraryTreeComponent } from './components/library-tree.component/library-tree.component';
 import { MainMenuComponent } from './components/main-menu.component/main-menu.component';
@@ -9,6 +9,7 @@ import { SettingsComponent } from './components/settings/settings.component';
 import { ViewContentComponent, ViewContentMode } from './components/view-content.component/view-content.component';
 import { ProjectDirectoryHandle as DirectoryHandle, ProjectLibraryManagerComponent, ProjectLibraryNode as TreeNode } from './components/view-content.component/project-library-manager.component';
 import { CreatividadComponent } from './components/creatividad.component/creatividad.component';
+import { ConfigService } from './services/config.service';
 
 interface AppSection {
   key: string;
@@ -30,6 +31,7 @@ interface AppSection {
 })
 export class AppComponent {
   @ViewChild(TextPlusComponent) private textPlusInstance?: TextPlusComponent;
+  private readonly config = inject(ConfigService);
   readonly appName = 'CaleVRijAdmin';
   readonly version = 'v1.0.0';
   readonly sections: readonly AppSection[] = [
@@ -138,7 +140,10 @@ export class AppComponent {
     void this.openBook(book);
   }
 
-  setProjectLibraryRoot(root: DirectoryHandle | null): void { this.projectLibraryRoot.set(root); }
+  setProjectLibraryRoot(root: DirectoryHandle | null): void {
+    this.projectLibraryRoot.set(root);
+    void this.config.configure(root);
+  }
 
   playLibraryFile(file: File): void {
     this.selectedLibraryFile.set(file);

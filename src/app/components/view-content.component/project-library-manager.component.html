@@ -5,21 +5,79 @@
     <button class="action-button" type="button" (click)="selectRoot()">
       {{ rootPath() ? 'Cambiar carpeta raíz' : 'Seleccionar carpeta raíz' }}
     </button>
+    <button class="action-button secondary-action" type="button" (click)="selectBrowserRoot()">Usar almacenamiento del navegador</button>
     <input #rootPicker class="visually-hidden" type="file" webkitdirectory directory multiple aria-label="Seleccionar carpeta raíz" (change)="selectRootFiles($event)">
+    <input #importPicker class="visually-hidden" type="file" webkitdirectory directory multiple aria-label="Importar carpeta al almacenamiento del navegador" (change)="importFilesToBrowserStorage($event)">
     @if (fallbackMode()) {
+      <button class="action-button secondary-action" type="button" (click)="importPicker.click()">Importar al almacenamiento del navegador</button>
       <div class="library-tree fallback-tree" aria-label="Contenido de carpeta raíz"><div class="tree-root"><span aria-hidden="true">📁</span><strong>{{ rootPath() }}</strong><small>{{ fallbackEntries().length }} elementos · solo lectura</small></div>@for (entry of fallbackEntries(); track entry.path) { <div class="fallback-tree-row" [style.padding-left.px]="entry.depth * 18 + 8"><span aria-hidden="true">{{ entry.kind === 'directory' ? '📁' : '📄' }}</span><span class="fallback-entry-name">{{ entry.name }}</span>@if (entry.kind === 'file') { <small>{{ entry.size }} bytes</small> }</div> }</div>
     } @else if (rootPath()) {
       <div class="library-tree" aria-label="Árbol de bibliotecas">
         <div class="tree-root"><span aria-hidden="true">📁</span><strong>Raíz</strong><small>{{ rootPath() }}</small><button class="tree-action add" aria-label="Agregar biblioteca" title="Agregar biblioteca" (click)="openCreateDialog('biblioteca', rootHandle()!)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M7 12h10"/></svg></button></div>
         @for (library of libraries(); track library.name) {
           <div class="tree-level level-0">
-            <div class="tree-row"><span>📚</span><strong>{{ library.name }}</strong><button class="tree-action add" aria-label="Agregar estante" title="Agregar estante" (click)="openCreateDialog('estante', library.handle)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M7 12h10"/></svg></button><button class="tree-action remove" aria-label="Eliminar biblioteca" title="Eliminar biblioteca" (click)="deleteNode(library, rootHandle()!)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M7 12h10"/></svg></button><button class="tree-action edit" aria-label="Editar biblioteca" title="Editar biblioteca" (click)="editNode(library)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 16.5-.8 4.3 4.3-.8L19 8.5 15.5 5 4 16.5Z"/><path d="m13.8 6.7 3.5 3.5"/></svg></button><button class="tree-action image" aria-label="Administrar imagen de biblioteca" title="Administrar imagen" (click)="openImageDialog(library)"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m4 17 5-5 3 3 2-2 6 6"/></svg></button></div>
+            <div class="tree-row">
+              <span>📚</span><strong>{{ library.name }}</strong>
+              <button type="button" class="tree-menu-button" [attr.aria-expanded]="openMenuPath() === nodeMenuKey(library)" aria-haspopup="menu" [attr.aria-label]="'Acciones de ' + library.name" title="Acciones" (click)="toggleNodeMenu(library, $event)">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
+              </button>
+              @if (openMenuPath() === nodeMenuKey(library)) {
+                <div class="tree-menu" role="menu" [attr.aria-label]="'Acciones de ' + library.name">
+                  <button type="button" role="menuitem" (click)="addChildFromMenu(library, 'estante')"><span class="menu-icon add" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M7 12h10"/></svg></span>Agregar estante</button>
+                  <button type="button" role="menuitem" (click)="editNodeFromMenu(library)"><span class="menu-icon edit" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m4 16.5-.8 4.3 4.3-.8L19 8.5 15.5 5 4 16.5Z"/><path d="m13.8 6.7 3.5 3.5"/></svg></span>Editar biblioteca</button>
+                  <button type="button" role="menuitem" (click)="manageImageFromMenu(library)"><span class="menu-icon image" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m4 17 5-5 3 3 2-2 6 6"/></svg></span>Administrar imagen</button>
+                  <button type="button" role="menuitem" class="danger" (click)="deleteNodeFromMenu(library)"><span class="menu-icon remove" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M7 12h10"/></svg></span>Eliminar biblioteca</button>
+                </div>
+              }
+            </div>
             @for (shelf of library.children; track shelf.name) {
-              <div class="tree-level level-1"><div class="tree-row"><span>🗄️</span><strong>{{ shelf.name }}</strong><button class="tree-action add" aria-label="Agregar tema" title="Agregar tema" (click)="openCreateDialog('tema', shelf.handle)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M7 12h10"/></svg></button><button class="tree-action remove" aria-label="Eliminar estante" title="Eliminar estante" (click)="deleteNode(shelf, library.handle)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M7 12h10"/></svg></button><button class="tree-action edit" aria-label="Editar estante" title="Editar estante" (click)="editNode(shelf)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 16.5-.8 4.3 4.3-.8L19 8.5 15.5 5 4 16.5Z"/><path d="m13.8 6.7 3.5 3.5"/></svg></button><button class="tree-action image" aria-label="Administrar imagen de estante" title="Administrar imagen" (click)="openImageDialog(shelf)"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m4 17 5-5 3 3 2-2 6 6"/></svg></button></div>
+              <div class="tree-level level-1">
+                <div class="tree-row">
+                  <span>🗄️</span><strong>{{ shelf.name }}</strong>
+                  <button type="button" class="tree-menu-button" [attr.aria-expanded]="openMenuPath() === nodeMenuKey(shelf)" aria-haspopup="menu" [attr.aria-label]="'Acciones de ' + shelf.name" title="Acciones" (click)="toggleNodeMenu(shelf, $event)">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
+                  </button>
+                  @if (openMenuPath() === nodeMenuKey(shelf)) {
+                    <div class="tree-menu" role="menu" [attr.aria-label]="'Acciones de ' + shelf.name">
+                      <button type="button" role="menuitem" (click)="addChildFromMenu(shelf, 'tema')"><span class="menu-icon add" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M7 12h10"/></svg></span>Agregar tema</button>
+                      <button type="button" role="menuitem" (click)="editNodeFromMenu(shelf)"><span class="menu-icon edit" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m4 16.5-.8 4.3 4.3-.8L19 8.5 15.5 5 4 16.5Z"/><path d="m13.8 6.7 3.5 3.5"/></svg></span>Editar estante</button>
+                      <button type="button" role="menuitem" (click)="manageImageFromMenu(shelf)"><span class="menu-icon image" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m4 17 5-5 3 3 2-2 6 6"/></svg></span>Administrar imagen</button>
+                      <button type="button" role="menuitem" class="danger" (click)="deleteNodeFromMenu(shelf)"><span class="menu-icon remove" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M7 12h10"/></svg></span>Eliminar estante</button>
+                    </div>
+                  }
+                </div>
                 @for (topic of shelf.children; track topic.name) {
-                  <div class="tree-level level-2"><div class="tree-row"><span>📂</span><strong>{{ topic.name }}</strong><button class="tree-action add" aria-label="Agregar libro" title="Agregar libro" (click)="openCreateDialog('libro', topic.handle)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M7 12h10"/></svg></button><button class="tree-action remove" aria-label="Eliminar tema" title="Eliminar tema" (click)="deleteNode(topic, shelf.handle)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M7 12h10"/></svg></button><button class="tree-action edit" aria-label="Editar tema" title="Editar tema" (click)="editNode(topic)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 16.5-.8 4.3 4.3-.8L19 8.5 15.5 5 4 16.5Z"/><path d="m13.8 6.7 3.5 3.5"/></svg></button><button class="tree-action image" aria-label="Administrar imagen de tema" title="Administrar imagen" (click)="openImageDialog(topic)"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m4 17 5-5 3 3 2-2 6 6"/></svg></button></div>
+                  <div class="tree-level level-2">
+                    <div class="tree-row">
+                      <span>📂</span><strong>{{ topic.name }}</strong>
+                      <button type="button" class="tree-menu-button" [attr.aria-expanded]="openMenuPath() === nodeMenuKey(topic)" aria-haspopup="menu" [attr.aria-label]="'Acciones de ' + topic.name" title="Acciones" (click)="toggleNodeMenu(topic, $event)">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
+                      </button>
+                      @if (openMenuPath() === nodeMenuKey(topic)) {
+                        <div class="tree-menu" role="menu" [attr.aria-label]="'Acciones de ' + topic.name">
+                          <button type="button" role="menuitem" (click)="addChildFromMenu(topic, 'libro')"><span class="menu-icon add" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M7 12h10"/></svg></span>Agregar libro</button>
+                          <button type="button" role="menuitem" (click)="editNodeFromMenu(topic)"><span class="menu-icon edit" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m4 16.5-.8 4.3 4.3-.8L19 8.5 15.5 5 4 16.5Z"/><path d="m13.8 6.7 3.5 3.5"/></svg></span>Editar tema</button>
+                          <button type="button" role="menuitem" (click)="manageImageFromMenu(topic)"><span class="menu-icon image" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m4 17 5-5 3 3 2-2 6 6"/></svg></span>Administrar imagen</button>
+                          <button type="button" role="menuitem" class="danger" (click)="deleteNodeFromMenu(topic)"><span class="menu-icon remove" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M7 12h10"/></svg></span>Eliminar tema</button>
+                        </div>
+                      }
+                    </div>
                     @for (book of topic.children; track book.name) {
-                      <div class="tree-level level-3" role="button" tabindex="0" (click)="bookSelected.emit(book)" (keydown.enter)="bookSelected.emit(book)" (keydown.space)="$event.preventDefault(); bookSelected.emit(book)"><div class="tree-row"><span>📖</span><strong>{{ book.name }}</strong><button class="tree-action remove" aria-label="Eliminar libro" title="Eliminar libro" (click)="$event.stopPropagation(); deleteNode(book, topic.handle)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M7 12h10"/></svg></button><button class="tree-action edit" aria-label="Editar libro" title="Editar libro" (click)="$event.stopPropagation(); editNode(book)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 16.5-.8 4.3 4.3-.8L19 8.5 15.5 5 4 16.5Z"/><path d="m13.8 6.7 3.5 3.5"/></svg></button><button class="tree-action image" aria-label="Administrar imagen de libro" title="Administrar imagen" (click)="$event.stopPropagation(); openImageDialog(book)"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m4 17 5-5 3 3 2-2 6 6"/></svg></button></div></div>
+                      <div class="tree-level level-3" role="button" tabindex="0" (click)="bookSelected.emit(book)" (keydown.enter)="bookSelected.emit(book)" (keydown.space)="$event.preventDefault(); bookSelected.emit(book)">
+                        <div class="tree-row">
+                          <span>📖</span><strong>{{ book.name }}</strong>
+                          <button type="button" class="tree-menu-button" [attr.aria-expanded]="openMenuPath() === nodeMenuKey(book)" aria-haspopup="menu" [attr.aria-label]="'Acciones de ' + book.name" title="Acciones" (click)="toggleNodeMenu(book, $event)" (keydown)="$event.stopPropagation()">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
+                          </button>
+                          @if (openMenuPath() === nodeMenuKey(book)) {
+                            <div class="tree-menu" role="menu" [attr.aria-label]="'Acciones de ' + book.name" (click)="$event.stopPropagation()" (keydown)="$event.stopPropagation()">
+                              <button type="button" role="menuitem" (click)="editNodeFromMenu(book)"><span class="menu-icon edit" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m4 16.5-.8 4.3 4.3-.8L19 8.5 15.5 5 4 16.5Z"/><path d="m13.8 6.7 3.5 3.5"/></svg></span>Editar libro</button>
+                              <button type="button" role="menuitem" (click)="manageImageFromMenu(book)"><span class="menu-icon image" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m4 17 5-5 3 3 2-2 6 6"/></svg></span>Administrar imagen</button>
+                              <button type="button" role="menuitem" class="danger" (click)="deleteNodeFromMenu(book)"><span class="menu-icon remove" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M7 12h10"/></svg></span>Eliminar libro</button>
+                            </div>
+                          }
+                        </div>
+                      </div>
                     }
                   </div>
                 }

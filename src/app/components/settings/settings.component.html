@@ -23,8 +23,34 @@
             <p class="settings-help">Ambos dispositivos deben tener abierta esta pantalla y la carpeta raíz de su biblioteca seleccionada. Los códigos de conexión se comparten manualmente (por mensaje, correo o USB) y solo sirven para esta sesión.</p>
             <p class="settings-help">La sincronización copia archivos nuevos y actualiza los que tengan una fecha de modificación más reciente. No elimina archivos. Si la red bloquea WebRTC, prueba con ambos dispositivos en la misma red Wi-Fi.</p>
             <p class="settings-help">La app guarda un archivo oculto <code>.calevri-sync.json</code> en la raíz para recordar las fechas de los archivos recibidos y no volver a descargarlos.</p>
-            <p class="root-status">{{ libraryRoot ? 'Raíz local lista: ' + libraryRoot.name : 'Sin raíz local. Abre el panel de biblioteca con Menu y selecciona la carpeta raíz.' }}</p>
+            <p class="root-status">{{ libraryRoot ? 'Biblioteca principal lista: ' + libraryRoot.name : 'Sin biblioteca principal. Abre el panel de biblioteca con Menu y selecciona la carpeta raíz.' }}</p>
             @if (formMessage) { <p class="settings-alert" role="alert">{{ formMessage }}</p> }
+          </article>
+
+          <article class="settings-card libraries-card">
+            <div class="drive-heading"><span class="drive-icon" aria-hidden="true">▦</span><div><h3>Bibliotecas que se sincronizan</h3><p>Se sincronizan dos carpetas independientes: la biblioteca de libros (principal) y la biblioteca del reproductor. Todo lo que esté dentro de ellas viaja entre dispositivos, incluida la carpeta de configuración <code>.calevri</code>.</p></div></div>
+            <div class="library-grid">
+              <div class="library-slot">
+                <span class="library-tag">Libros</span>
+                <strong>{{ libraryRoot ? libraryRoot.name : 'Sin carpeta' }}</strong>
+                <p>{{ libraryRoot ? 'Incluye libros, estantes, temas y la configuración de la app.' : 'Selecciona la carpeta principal desde el panel de biblioteca (Menu).' }}</p>
+              </div>
+              <div class="library-slot">
+                <span class="library-tag player">Reproductor</span>
+                <strong>{{ playerLibrary()?.name || 'Sin carpeta' }}</strong>
+                <p>{{ playerLibrary() ? 'Sus archivos se envían y reciben junto con la biblioteca principal.' : 'Elige dónde guardar la biblioteca del reproductor en este dispositivo.' }}</p>
+                <div class="library-actions">
+                  <button type="button" [disabled]="sync.syncing()" (click)="choosePlayerLibrary()">Elegir carpeta</button>
+                  <button type="button" class="secondary-button" [disabled]="sync.syncing()" (click)="useBrowserPlayerLibrary()">Usar almacenamiento del navegador</button>
+                  @if (playerLibrary()) {
+                    <button type="button" class="secondary-button" [disabled]="sync.syncing()" (click)="rescanPlayerLibrary()">Volver a leer</button>
+                  }
+                </div>
+              </div>
+            </div>
+            <p class="settings-help">En móvil o navegador, elige «Usar almacenamiento del navegador» si el dispositivo no permite seleccionar una carpeta real. La biblioteca quedará dentro de la app y se sincronizará igual que en escritorio.</p>
+            @if (config.message()) { <p class="settings-help">{{ config.message() }}</p> }
+            @if (playerMessage()) { <p class="root-status">{{ playerMessage() }}</p> }
           </article>
 
           <div class="sync-steps">
@@ -32,7 +58,7 @@
               <span class="step-number">1</span>
               <h3>Dispositivo A · Crear invitación</h3>
               <p>Crea el código en el dispositivo que inicia la conexión y compártelo con el otro dispositivo.</p>
-              <button type="button" [disabled]="!libraryRoot || sync.syncing() || sync.connected()" (click)="createInvitation()">Crear código de invitación</button>
+              <button type="button" [disabled]="!libraryRoot || sync.syncing() || sync.connected() || sync.role() === 'answerer'" (click)="createInvitation()">Crear código de invitación</button>
               @if (sync.invitationCode()) {
                 <label for="invitation-code">Código de invitación</label>
                 <textarea id="invitation-code" readonly rows="5">{{ sync.invitationCode() }}</textarea>
@@ -44,10 +70,10 @@
             <article class="settings-card step-card">
               <span class="step-number">2</span>
               <h3>Dispositivo B · Generar respuesta</h3>
-              <p>Pega el código de invitación del dispositivo A y genera el código de respuesta.</p>
+              <p>Pega el código de invitación del dispositivo A y genera el código de respuesta. Este paso debe hacerse en el otro dispositivo, no en el que creó la invitación.</p>
               <label for="invitation-input">Código de invitación recibido</label>
               <textarea id="invitation-input" rows="5" placeholder="Pega aquí el código de invitación…" [value]="invitationInput" (input)="invitationInput = $any($event.target).value"></textarea>
-              <button type="button" [disabled]="!libraryRoot || !invitationInput.trim() || sync.syncing() || sync.connected()" (click)="generateAnswer()">Generar respuesta</button>
+              <button type="button" [disabled]="!libraryRoot || !invitationInput.trim() || sync.syncing() || sync.connected() || sync.role() === 'offerer'" (click)="generateAnswer()">Generar respuesta</button>
               @if (sync.answerCode()) {
                 <label for="answer-code">Código de respuesta</label>
                 <textarea id="answer-code" readonly rows="5">{{ sync.answerCode() }}</textarea>
@@ -60,14 +86,15 @@
           <article class="settings-card step-card">
             <span class="step-number">3</span>
             <h3>Dispositivo A · Conectar</h3>
-            <p>Pega el código de respuesta que generó el dispositivo B. La sincronización comienza automáticamente al conectar.</p>
+            <p>Pega el código de respuesta que generó el dispositivo B. La sincronización comienza automáticamente al conectar. Este paso debe hacerse en el mismo dispositivo que creó la invitación.</p>
             <label for="answer-input">Código de respuesta recibido</label>
-            <textarea id="answer-input" rows="5" placeholder="Pega aquí el código de respuesta…" [value]="answerInput" (input)="answerInput = $any($event.target).value"></textarea>
-            <button type="button" [disabled]="!answerInput.trim() || sync.connected()" (click)="connect()">Conectar y sincronizar</button>
+            <textarea id="answer-input" rows="5" placeholder="Pega aquí el código de respuesta…" [value]="answerInput" (input)="answerInput = $any($event.target).value" [disabled]="sync.role() !== 'offerer'"></textarea>
+            <button type="button" [disabled]="sync.role() !== 'offerer' || sync.state() !== 'waiting-answer' || !answerInput.trim()" (click)="connect()">Conectar y sincronizar</button>
           </article>
 
           <article class="settings-card status-card">
             <div class="status-heading"><h3>Estado de la conexión</h3><span class="state-pill" [attr.data-state]="sync.state()">{{ stateLabel() }}</span></div>
+            <p class="role-hint">Rol: {{ roleLabel() }}</p>
             <p class="status-message">{{ sync.message() || 'Todavía no hay una conexión iniciada.' }}</p>
             <div class="status-actions">
               @if (sync.connected()) {

@@ -1,12 +1,13 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, effect, inject, signal } from '@angular/core';
+import { ConfigService, PlayerLibraryConfig } from './config.service';
 
 export interface LibraryDirectoryHandle {
   name: string;
   kind: 'directory';
   entries(): AsyncIterable<[string, LibraryDirectoryHandle | LibraryFileHandle]>;
   getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<LibraryDirectoryHandle>;
-  getFileHandle(name: string): Promise<LibraryFileHandle>;
-  removeEntry(name: string): Promise<void>;
+  getFileHandle(name: string, options?: { create?: boolean }): Promise<LibraryFileHandle>;
+  removeEntry(name: string, options?: { recursive?: boolean }): Promise<void>;
   queryPermission(options: { mode: 'readwrite' }): Promise<PermissionState>;
   requestPermission(options: { mode: 'readwrite' }): Promise<PermissionState>;
 }
@@ -14,6 +15,7 @@ export interface LibraryDirectoryHandle {
 export interface LibraryFileHandle {
   kind: 'file';
   getFile(): Promise<File>;
+  createWritable(): Promise<{ write(data: string | Blob): Promise<void>; close(): Promise<void> }>;
 }
 
 export interface LibraryPickerWindow extends Window {
@@ -50,11 +52,19 @@ export interface LibraryScanProgress { libraryId: string; scanned: number; perce
 
 @Injectable({ providedIn: 'root' })
 export class LibraryTreeService {
+  private readonly config = inject(ConfigService);
   readonly libraries = signal<LibraryRecord[]>([]);
   readonly nodes = signal<IndexedLibraryNode[]>([]);
   readonly progress = signal<LibraryScanProgress | null>(null);
   private dbPromise?: Promise<IDBDatabase>;
   private initializePromise?: Promise<void>;
+
+  constructor() {
+    effect(() => {
+      if (!this.config.ready()) return;
+      this.mergeRegistry(this.config.playerLibraries());
+    });
+  }
 
   initialize(): Promise<void> {
     if (!this.initializePromise) {
@@ -66,28 +76,91 @@ export class LibraryTreeService {
         ]);
         this.libraries.set(libraries);
         this.nodes.set(nodes.sort((a, b) => a.libraryId.localeCompare(b.libraryId) || a.path.localeCompare(b.path, undefined, { numeric: true })));
+        await this.config.whenReady();
+        this.mergeRegistry(this.config.playerLibraries());
+        this.persistRegistry();
       })();
     }
     return this.initializePromise;
   }
 
-  async addLibrary(): Promise<LibraryRecord | null> {
-    const picker = (window as LibraryPickerWindow).showDirectoryPicker;
-    if (!picker) throw new Error('El navegador no permite seleccionar carpetas. Usa Chrome o Edge en un contexto seguro.');
-    const root = await picker.call(window, { mode: 'readwrite' });
-    const permission = await root.requestPermission({ mode: 'readwrite' });
-    if (permission !== 'granted') throw new Error('Se requiere permiso de lectura y escritura.');
+  primaryLibrary(): LibraryRecord | null {
+    return this.libraries()[0] ?? null;
+  }
+
+  async addLibraryFromHandle(root: LibraryDirectoryHandle, name?: string): Promise<LibraryRecord> {
     const record: LibraryRecord = {
-      id: crypto.randomUUID(), name: root.name, root,
+      id: crypto.randomUUID(), name: name?.trim() || root.name, root,
       createdAt: new Date().toISOString(), lastScan: '', folderCount: 0, fileCount: 0, totalBytes: 0
     };
     await this.putRecord(record);
     this.libraries.update(items => [...items, record]);
     await this.scan(record);
-    return this.libraries().find(item => item.id === record.id) ?? record;
+    const saved = this.libraries().find(item => item.id === record.id) ?? record;
+    this.persistRegistry();
+    return saved;
   }
 
-  async rescan(record: LibraryRecord): Promise<void> { await this.scan(record); }
+  async createBrowserStorageLibrary(): Promise<LibraryRecord> {
+    const storage = (navigator as Navigator & { storage?: { getDirectory?: () => Promise<LibraryDirectoryHandle> } }).storage;
+    if (!storage?.getDirectory) {
+      throw new Error('Este navegador no permite crear una biblioteca en su almacenamiento interno.');
+    }
+    const existing = this.libraries().find(library => library.name === 'Reproductor (navegador)');
+    if (existing) {
+      await this.rescan(existing);
+      return existing;
+    }
+    const opfs = await storage.getDirectory();
+    const root = await opfs.getDirectoryHandle('CaleVRiJReproductor', { create: true }) as unknown as LibraryDirectoryHandle;
+    return this.addLibraryFromHandle(root, 'Reproductor (navegador)');
+  }
+
+  exportRegistry(): PlayerLibraryConfig[] {
+    return this.libraries().map(library => ({
+      id: library.id,
+      name: library.name,
+      createdAt: library.createdAt
+    }));
+  }
+
+  persistRegistry(): void {
+    const merged = [...this.config.playerLibraries()];
+    for (const library of this.exportRegistry()) {
+      if (!merged.some(item => item.id === library.id || item.name === library.name)) merged.push(library);
+    }
+    this.config.savePlayerLibraries(merged);
+  }
+
+  async refreshFromConfig(): Promise<void> {
+    await this.config.reload();
+    this.mergeRegistry(this.config.playerLibraries());
+    this.persistRegistry();
+  }
+
+  async rescan(record: LibraryRecord): Promise<void> {
+    await this.scan(record);
+    this.persistRegistry();
+  }
+
+  private mergeRegistry(registry: PlayerLibraryConfig[]): void {
+    if (!registry.length) return;
+    const existing = new Set(this.libraries().map(library => library.name));
+    const known = new Set(this.libraries().map(library => library.id));
+    const missing = registry.filter(item => !known.has(item.id) && !existing.has(item.name));
+    if (missing.length) {
+      this.config.message.set(`Hay ${missing.length} biblioteca(s) del reproductor registradas en la configuración. Selecciona su carpeta en Settings para usarlas en este dispositivo.`);
+    }
+  }
+
+  async addLibrary(): Promise<LibraryRecord | null> {
+    const picker = (window as LibraryPickerWindow).showDirectoryPicker;
+    if (!picker) throw new Error('El navegador no permite seleccionar carpetas. Usa Chrome o Edge en un contexto seguro, o crea la biblioteca en el almacenamiento del navegador.');
+    const root = await picker.call(window, { mode: 'readwrite' });
+    const permission = await root.requestPermission({ mode: 'readwrite' });
+    if (permission !== 'granted') throw new Error('Se requiere permiso de lectura y escritura.');
+    return this.addLibraryFromHandle(root);
+  }
 
   async removeLibrary(record: LibraryRecord): Promise<void> {
     const db = await this.openDb();
@@ -104,6 +177,11 @@ export class LibraryTreeService {
     });
     this.libraries.update(items => items.filter(item => item.id !== record.id));
     this.nodes.update(items => items.filter(item => item.libraryId !== record.id));
+    const remaining = this.config.playerLibraries().filter(item => item.id !== record.id && item.name !== record.name);
+    for (const library of this.exportRegistry()) {
+      if (!remaining.some(item => item.id === library.id || item.name === library.name)) remaining.push(library);
+    }
+    this.config.savePlayerLibraries(remaining);
   }
 
   async setCover(record: LibraryRecord, cover: Blob): Promise<void> {
@@ -183,6 +261,7 @@ export class LibraryTreeService {
       while (queueIndex < queue.length) {
         const current = queue[queueIndex++];
         for await (const [name, entry] of current.directory.entries()) {
+          if (name === '.calevri' || name === '.calevri-sync.json') continue;
           const path = current.parentPath ? `${current.parentPath}/${name}` : name;
           if (entry.kind === 'directory') {
             folderCount++;

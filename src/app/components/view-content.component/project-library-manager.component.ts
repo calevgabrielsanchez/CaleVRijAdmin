@@ -1,4 +1,4 @@
-import { Component, ElementRef, EventEmitter, Input, Output, ViewChild, signal } from '@angular/core';
+import { Component, ElementRef, EventEmitter, Input, OnChanges, Output, SimpleChanges, ViewChild, signal } from '@angular/core';
 
 export interface ProjectFileHandle {
   kind: 'file';
@@ -38,9 +38,13 @@ interface FallbackNode { path: string; name: string; kind: 'directory' | 'file';
   standalone: true,
   templateUrl: './project-library-manager.component.html',
   styleUrl: './project-library-manager.component.css',
-  host: { '[class.active]': 'active' }
+  host: {
+    '[class.active]': 'active',
+    '(document:click)': 'onDocumentClick($event)',
+    '(document:keydown.escape)': 'closeNodeMenu()'
+  }
 })
-export class ProjectLibraryManagerComponent {
+export class ProjectLibraryManagerComponent implements OnChanges {
   @ViewChild('rootPicker') private rootPicker?: ElementRef<HTMLInputElement>;
   @Input() active = false;
   @Output() readonly bookSelected = new EventEmitter<ProjectLibraryNode | null>();
@@ -62,8 +66,53 @@ export class ProjectLibraryManagerComponent {
   readonly currentImageName = signal('');
   readonly fallbackMode = signal(false);
   readonly fallbackEntries = signal<FallbackNode[]>([]);
+  readonly openMenuPath = signal<string | null>(null);
 
   constructor() { void this.restoreRoot(); }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['active'] && !changes['active'].currentValue) this.closeNodeMenu();
+  }
+
+  nodeMenuKey(node: ProjectLibraryNode): string {
+    return node.path.join('/');
+  }
+
+  toggleNodeMenu(node: ProjectLibraryNode, event: MouseEvent): void {
+    event.stopPropagation();
+    const key = this.nodeMenuKey(node);
+    this.openMenuPath.update(current => current === key ? null : key);
+  }
+
+  closeNodeMenu(): void {
+    this.openMenuPath.set(null);
+  }
+
+  onDocumentClick(event: MouseEvent): void {
+    const target = event.target;
+    if (target instanceof Element && target.closest('.tree-menu, .tree-menu-button')) return;
+    this.openMenuPath.set(null);
+  }
+
+  addChildFromMenu(node: ProjectLibraryNode, level: ProjectNodeLevel): void {
+    this.closeNodeMenu();
+    this.openCreateDialog(level, node.handle);
+  }
+
+  editNodeFromMenu(node: ProjectLibraryNode): void {
+    this.closeNodeMenu();
+    this.editNode(node);
+  }
+
+  manageImageFromMenu(node: ProjectLibraryNode): void {
+    this.closeNodeMenu();
+    void this.openImageDialog(node);
+  }
+
+  deleteNodeFromMenu(node: ProjectLibraryNode): void {
+    this.closeNodeMenu();
+    void this.deleteNode(node, node.parent);
+  }
 
   async selectRoot(): Promise<void> {
     const picker = (window as DirectoryPickerWindow).showDirectoryPicker;
@@ -76,19 +125,73 @@ export class ProjectLibraryManagerComponent {
       const handle = await picker.call(window, { mode: 'readwrite' });
       const permission = await handle.requestPermission({ mode: 'readwrite' });
       if (permission !== 'granted') { this.statusMessage.set('Se necesita permiso de lectura y escritura para usar esta carpeta.'); return; }
-      this.rootHandle.set(handle);
-      this.rootPath.set(handle.name);
-      this.fallbackMode.set(false);
-      this.fallbackEntries.set([]);
-      this.rootHandleChange.emit(handle);
-      this.bookSelected.emit(null);
-      await this.setSetting('root', handle);
-      await this.setSetting('lastBookPath', null);
-      await this.refreshTree();
+      await this.activateRoot(handle);
       this.statusMessage.set('Carpeta raíz guardada con acceso de lectura y escritura.');
     } catch (error) {
       if ((error as DOMException)?.name !== 'AbortError') this.statusMessage.set('No se pudo abrir o guardar la carpeta seleccionada.');
     }
+  }
+
+  async selectBrowserRoot(): Promise<void> {
+    const storage = (navigator as Navigator & { storage?: { getDirectory?: () => Promise<ProjectDirectoryHandle> } }).storage;
+    if (!storage?.getDirectory) {
+      this.statusMessage.set('Este navegador no permite usar el almacenamiento interno. Usa el selector de carpeta.');
+      return;
+    }
+    try {
+      const opfs = await storage.getDirectory();
+      const handle = await opfs.getDirectoryHandle('CaleVRiJBiblioteca', { create: true }) as unknown as ProjectDirectoryHandle;
+      await this.activateRoot(handle, 'Biblioteca (navegador)');
+      this.statusMessage.set('Biblioteca principal guardada en el almacenamiento del navegador. Puedes importar archivos existentes cuando quieras.');
+    } catch {
+      this.statusMessage.set('No se pudo crear la biblioteca en el almacenamiento del navegador.');
+    }
+  }
+
+  async importFilesToBrowserStorage(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const files = Array.from(input.files ?? []);
+    input.value = '';
+    if (!files.length) return;
+    const storage = (navigator as Navigator & { storage?: { getDirectory?: () => Promise<ProjectDirectoryHandle> } }).storage;
+    if (!storage?.getDirectory) {
+      this.statusMessage.set('Este navegador no permite usar el almacenamiento interno.');
+      return;
+    }
+    try {
+      const opfs = await storage.getDirectory();
+      const root = await opfs.getDirectoryHandle('CaleVRiJBiblioteca', { create: true }) as unknown as ProjectDirectoryHandle;
+      let imported = 0;
+      for (const file of files) {
+        const parts = (file.webkitRelativePath || file.name).split('/').filter(Boolean).slice(1);
+        if (!parts.length) continue;
+        const fileName = parts.pop()!;
+        let directory = root;
+        for (const part of parts) directory = await directory.getDirectoryHandle(part, { create: true });
+        const handle = await directory.getFileHandle(fileName, { create: true });
+        const writer = await handle.createWritable();
+        await writer.write(file);
+        await writer.close();
+        imported++;
+        if (imported % 50 === 0) this.statusMessage.set(`Importando… ${imported} de ${files.length} archivos.`);
+      }
+      await this.activateRoot(root, 'Biblioteca (navegador)');
+      this.statusMessage.set(`Se importaron ${imported} archivos al almacenamiento del navegador.`);
+    } catch {
+      this.statusMessage.set('No se pudieron importar los archivos al almacenamiento del navegador.');
+    }
+  }
+
+  private async activateRoot(handle: ProjectDirectoryHandle, label?: string): Promise<void> {
+    this.rootHandle.set(handle);
+    this.rootPath.set(label || handle.name);
+    this.fallbackMode.set(false);
+    this.fallbackEntries.set([]);
+    this.rootHandleChange.emit(handle);
+    this.bookSelected.emit(null);
+    await this.setSetting('root', handle);
+    await this.setSetting('lastBookPath', null);
+    await this.refreshTree();
   }
 
   selectRootFiles(event: Event): void {
@@ -127,7 +230,7 @@ export class ProjectLibraryManagerComponent {
     this.fallbackEntries.set([...entries.values()].sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true })));
     this.rootHandleChange.emit(null);
     this.bookSelected.emit(null);
-    this.statusMessage.set('Carpeta cargada en modo lectura en este dispositivo. Para crear o editar elementos se necesita un selector con permisos de escritura.');
+    this.statusMessage.set('Carpeta cargada en modo lectura. Para crear o editar elementos, usa «Importar al almacenamiento del navegador» o un selector con permisos de escritura.');
   }
 
   openCreateDialog(level: ProjectNodeLevel, parent: ProjectDirectoryHandle): void {
@@ -216,8 +319,11 @@ export class ProjectLibraryManagerComponent {
     try {
       const handle = await this.getSetting<ProjectDirectoryHandle>('root');
       if (!handle) return;
-      let permission = await handle.queryPermission({ mode: 'readwrite' });
-      if (permission !== 'granted') permission = await handle.requestPermission({ mode: 'readwrite' });
+      let permission: PermissionState = 'granted';
+      if (typeof handle.queryPermission === 'function') {
+        permission = await handle.queryPermission({ mode: 'readwrite' });
+        if (permission !== 'granted') permission = await handle.requestPermission({ mode: 'readwrite' });
+      }
       if (permission !== 'granted') { this.statusMessage.set('Vuelve a seleccionar la carpeta raíz para conceder acceso.'); return; }
       this.rootHandle.set(handle); this.rootPath.set(handle.name); this.fallbackMode.set(false); this.fallbackEntries.set([]); this.rootHandleChange.emit(handle); await this.refreshTree();
       const lastPath = await this.getSetting<string[]>('lastBookPath');
@@ -235,6 +341,7 @@ export class ProjectLibraryManagerComponent {
     const next: Record<ProjectNodeLevel, ProjectNodeLevel | null> = { biblioteca: 'estante', estante: 'tema', tema: 'libro', libro: null };
     const nodes: ProjectLibraryNode[] = [];
     for await (const [name, entry] of parent.entries()) {
+      if (name === '.calevri' || name === '.calevri-sync.json') continue;
       if (entry.kind !== 'directory') continue;
       const node: ProjectLibraryNode = { name, level, handle: entry, parent, path: [...path, name], children: [] };
       if (next[level]) node.children = await this.readNodes(entry, next[level]!, node.path);

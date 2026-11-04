@@ -8,6 +8,8 @@
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
     "cap:sync": "ng build && npx cap sync",
+    "cap:assets": "npx capacitor-assets generate --android",
+    "cap:android": "npm run build && npm run cap:assets && npx cap sync android",
     "cap:add:android": "npx cap add android",
     "cap:add:ios": "npx cap add ios"
   },
@@ -31,6 +33,7 @@
     "@angular/build": "^22.0.0",
     "@angular/cli": "^22.0.0",
     "@angular/compiler-cli": "^22.0.0",
+    "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "^8.0.0",
     "typescript": "^6.0.0"
   }

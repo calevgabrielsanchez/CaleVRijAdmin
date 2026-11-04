@@ -1,5 +1,6 @@
 import { Component, ElementRef, EventEmitter, Input, OnDestroy, Output, ViewChild, inject } from '@angular/core';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
+import { ConfigService, PlayerBookmark } from '../../services/config.service';
 
 type MediaKind = 'audio' | 'video' | 'image' | 'pdf' | 'other';
 
@@ -11,11 +12,6 @@ interface PlaylistItem {
   key: string;
 }
 
-interface Bookmark {
-  time: number;
-  label: string;
-}
-
 @Component({
   selector: 'app-reproductor',
   standalone: true,
@@ -24,6 +20,7 @@ interface Bookmark {
 })
 export class ReproductorComponent implements OnDestroy {
   private readonly sanitizer = inject(DomSanitizer);
+  private readonly config = inject(ConfigService);
 
   @Input()
   set selectedFile(file: File | null) {
@@ -58,7 +55,6 @@ export class ReproductorComponent implements OnDestroy {
     }
   }
 
-  readonly storageKey = 'calevri-player-bookmarks';
   playlist: PlaylistItem[] = [];
   currentIndex = -1;
   currentTime = 0;
@@ -72,7 +68,7 @@ export class ReproductorComponent implements OnDestroy {
   bookmarksModalOpen = false;
   message = '';
   messageFading = false;
-  bookmarksByFile: Record<string, Bookmark[]> = {};
+  get bookmarksByFile(): Record<string, PlayerBookmark[]> { return this.config.bookmarks(); }
   private currentMedia: HTMLMediaElement | null = null;
   private autoplayOnAttach = false;
   private imagePointers = new Map<number, { x: number; y: number }>();
@@ -90,19 +86,7 @@ export class ReproductorComponent implements OnDestroy {
   private messageClearTimer?: ReturnType<typeof setTimeout>;
 
   constructor() {
-    try {
-      const saved = localStorage.getItem(this.storageKey);
-      if (saved) {
-        const parsed: unknown = JSON.parse(saved);
-        if (this.isBookmarkRecord(parsed)) {
-          this.bookmarksByFile = parsed;
-        } else {
-          this.setMessage('No se pudieron cargar los marcadores guardados: el formato no es válido.');
-        }
-      }
-    } catch {
-      this.setMessage('No se pudieron cargar los marcadores guardados del navegador.');
-    }
+    void this.config.whenReady();
   }
 
   ngOnDestroy(): void {
@@ -116,7 +100,7 @@ export class ReproductorComponent implements OnDestroy {
     return this.playlist[this.currentIndex] ?? null;
   }
 
-  get currentBookmarks(): Bookmark[] {
+  get currentBookmarks(): PlayerBookmark[] {
     const item = this.currentItem;
     return item ? this.bookmarksByFile[item.key] ?? [] : [];
   }
@@ -313,13 +297,8 @@ export class ReproductorComponent implements OnDestroy {
     if (!item || !this.canSeek) return;
     const time = this.currentMedia?.currentTime ?? this.currentTime;
     const bookmarks = [...this.currentBookmarks, { time, label: this.formatTime(time) }];
-    this.bookmarksByFile = { ...this.bookmarksByFile, [item.key]: bookmarks };
-    try {
-      localStorage.setItem(this.storageKey, JSON.stringify(this.bookmarksByFile));
-      this.setMessage(`Marcador guardado en ${this.formatTime(time)}.`);
-    } catch {
-      this.setMessage('No se pudo guardar el marcador en el almacenamiento del navegador.');
-    }
+    this.config.saveBookmarks({ ...this.bookmarksByFile, [item.key]: bookmarks });
+    this.setMessage(`Marcador guardado en ${this.formatTime(time)}.`);
   }
 
   openBookmarksModal(): void { this.bookmarksModalOpen = true; }
@@ -333,13 +312,8 @@ export class ReproductorComponent implements OnDestroy {
     const updated = { ...this.bookmarksByFile };
     if (remaining.length) updated[item.key] = remaining;
     else delete updated[item.key];
-    this.bookmarksByFile = updated;
-    try {
-      localStorage.setItem(this.storageKey, JSON.stringify(updated));
-      this.setMessage('Marcador eliminado.');
-    } catch {
-      this.setMessage('No se pudo guardar el cambio de marcadores.');
-    }
+    this.config.saveBookmarks(updated);
+    this.setMessage('Marcador eliminado.');
   }
 
   private setMessage(message: string): void {
@@ -352,7 +326,7 @@ export class ReproductorComponent implements OnDestroy {
     this.messageClearTimer = setTimeout(() => { this.message = ''; this.messageFading = false; }, 3000);
   }
 
-  goToBookmark(bookmark: Bookmark): void {
+  goToBookmark(bookmark: PlayerBookmark): void {
     if (!this.currentMedia) return;
     this.currentMedia.currentTime = Math.min(bookmark.time, this.duration || bookmark.time);
     this.currentTime = this.currentMedia.currentTime;
@@ -391,18 +365,5 @@ export class ReproductorComponent implements OnDestroy {
 
   private canPlayItem(item: PlaylistItem): boolean {
     return item.kind === 'audio' || item.kind === 'video';
-  }
-
-  private isBookmarkRecord(value: unknown): value is Record<string, Bookmark[]> {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-    return Object.values(value).every(bookmarks =>
-      Array.isArray(bookmarks) && bookmarks.every(bookmark =>
-        !!bookmark
-        && typeof bookmark === 'object'
-        && typeof bookmark.time === 'number'
-        && Number.isFinite(bookmark.time)
-        && typeof bookmark.label === 'string'
-      )
-    );
   }
 }
