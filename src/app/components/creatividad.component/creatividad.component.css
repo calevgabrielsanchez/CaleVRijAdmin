@@ -106,7 +106,7 @@
   padding: 10px;
   border: 2px solid #176b91;
   border-radius: 6px;
-  background: #bcecff;
+  background: linear-gradient(145deg, #bcecff, #6ac9ef);;
   box-shadow: inset 0 0 0 2px #e9fbff;
 }
 
@@ -145,7 +145,7 @@
 .controls { display: flex; flex-wrap: wrap; gap: 4px; }
 .controls > * { margin-right: 3px; }
 
-.app { display: flex; width: 100%; min-height: 0; flex-direction: column; align-items: center; padding: 0 8px 4px; box-sizing: border-box; background: #bcecff; }
+.app { display: flex; width: 100%; min-height: 0; flex-direction: column; align-items: center; padding: 0 8px 4px; box-sizing: border-box; background: linear-gradient(145deg, #bcecff, #6ac9ef);; }
 .canvas-container { width: 100%; height: min(65vh, 560px); overflow: hidden; border: 2px solid #176b91; border-radius: 6px; background: #fff; }
 .canvas-container canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: crosshair; background: #fff; }
 .contenedor-inputs-mat { display: flex; width: 100%; gap: 8px; }

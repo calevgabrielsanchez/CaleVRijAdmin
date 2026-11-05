@@ -7,9 +7,9 @@
 .settings-header h2 { margin: 3px 0 0; color: #fff; font-size: 19px; text-shadow: 0 2px #303438; }
 .settings-content { display: flex; min-height: 0; flex: 1 1 auto; align-items: flex-start; justify-content: center; overflow: auto; overscroll-behavior: contain; padding: 8px; }
 .sync-layout { display: grid; width: 100%; max-width: 900px; gap: 12px; }
-.settings-card { box-sizing: border-box; width: 100%; padding: 16px; border: 2px solid #176b91; border-radius: 7px; background: #bcecff; box-shadow: inset 0 0 0 2px #e9fbff; }
+.settings-card { box-sizing: border-box; width: 100%; padding: 16px; border: 2px solid #176b91; border-radius: 7px; background: linear-gradient(145deg, #bcecff, #6ac9ef);; box-shadow: inset 0 0 0 2px #e9fbff; }
 .drive-heading { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-.drive-icon { display: grid; width: 40px; height: 40px; flex: 0 0 40px; place-items: center; border-radius: 50%; background: #e9fbff; color: #176b91; font-size: 22px; font-weight: 800; }
+.drive-icon { display: grid; width: 40px; height: 40px; flex: 0 0 40px; place-items: center; border-radius: 50%; background: linear-gradient(145deg, #bcecff, #6ac9ef);; color: #176b91; font-size: 22px; font-weight: 800; }
 .drive-heading h3, .step-card h3, .status-card h3 { margin: 0 0 4px; color: #142754; font-size: 16px; }
 .drive-heading p, .step-card p, .settings-help { margin: 0; color: #35445d; font-size: 12px; line-height: 1.5; }
 .settings-help { margin-top: 8px; }
@@ -19,15 +19,15 @@
 .settings-card textarea { min-height: 96px; resize: vertical; overflow-wrap: anywhere; }
 .settings-card button { min-height: 38px; margin-top: 10px; padding: 8px 13px; border: 2px solid #176638; border-radius: 4px; background: #55b96f; color: #103d2b; font-weight: 800; cursor: pointer; }
 .settings-card button:disabled { opacity: .5; cursor: not-allowed; }
-.settings-card button.secondary-button { border-color: #176b91; background: #e9fbff; color: #142754; }
-.root-status { margin: 12px 0 0; padding: 8px 10px; border: 1px solid #176b91; border-radius: 4px; background: #e9fbff; color: #142754; font-size: 12px; overflow-wrap: anywhere; }
+.settings-card button.secondary-button { border-color: #176b91; background: linear-gradient(145deg, #bcecff, #6ac9ef);; color: #142754; }
+.root-status { margin: 12px 0 0; padding: 8px 10px; border: 1px solid #176b91; border-radius: 4px; background:linear-gradient(145deg, #bcecff, #6ac9ef);; color: #142754; font-size: 12px; overflow-wrap: anywhere; }
 .settings-card code { padding: 1px 4px; border-radius: 3px; background: #ffffffb0; color: #0f4a63; font: 11px Consolas, "Courier New", monospace; }
 .libraries-card { border-color: #142754; background: linear-gradient(145deg, #cdf1ff, #a9e2f8); }
 .library-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
 .library-slot { display: flex; min-width: 0; flex-direction: column; gap: 5px; padding: 12px; border: 1px solid #176b91; border-radius: 5px; background: #f3fdff; }
 .library-slot strong { color: #142754; font-size: 14px; overflow-wrap: anywhere; }
 .library-slot p { margin: 0; color: #35445d; font-size: 12px; line-height: 1.45; }
-.library-tag { align-self: flex-start; padding: 2px 8px; border: 1px solid #176b91; border-radius: 999px; background: #e9fbff; color: #142754; font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.library-tag { align-self: flex-start; padding: 2px 8px; border: 1px solid #176b91; border-radius: 999px; background: linear-gradient(145deg, #bcecff, #6ac9ef);; color: #142754; font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .library-tag.player { border-color: #176638; background: #d8f5df; color: #14502b; }
 .library-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .library-actions button { min-height: 32px; margin-top: 0; padding: 6px 10px; font-size: 12px; }
@@ -38,7 +38,7 @@
 .copy-note { display: block; margin-top: 7px; color: #176638; font-size: 11px; font-weight: 700; }
 .status-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
 .status-heading h3 { margin: 0; }
-.state-pill { padding: 4px 9px; border: 1px solid #176b91; border-radius: 999px; background: #e9fbff; color: #142754; font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.state-pill { padding: 4px 9px; border: 1px solid #176b91; border-radius: 999px; background: linear-gradient(145deg, #bcecff, #6ac9ef);; color: #142754; font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
 .state-pill[data-state="connected"], .state-pill[data-state="completed"] { border-color: #176638; background: #d8f5df; color: #14502b; }
 .state-pill[data-state="syncing"], .state-pill[data-state="creating-invitation"] { border-color: #8a6b00; background: #fff4bf; color: #5c4700; }
 .state-pill[data-state="error"] { border-color: #a33; background: #ffe3e3; color: #6b1717; }

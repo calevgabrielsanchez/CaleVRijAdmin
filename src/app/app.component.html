@@ -38,7 +38,7 @@
     }
   </section>
   @if (activeKey() !== 'menu') { <app-main-menu [items]="sections" [activeKey]="activeKey()" (selected)="navigate($event)"></app-main-menu> }
-  <footer class="app-footer"><span>DigitalSolution.com</span><span class="footer-vents" aria-hidden="true"></span><span>{{ version }}</span></footer>
+  <footer class="app-footer"><span>CrealitySolution.com</span><span class="footer-vents" aria-hidden="true"></span><span>{{ version }}</span></footer>
   @if (textPlusOpen()) {
     <app-text-plus [(textoContenido)]="textPlusContent" (cerrar)="closeTextPlus()" (aceptar)="acceptTextPlus()"></app-text-plus>
   }
