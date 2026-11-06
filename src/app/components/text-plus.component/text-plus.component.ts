@@ -17,7 +17,7 @@ export class TextPlusComponent implements OnInit {
   private textOld = '';
 
   @Output() readonly cerrar = new EventEmitter<void>();
-  @Output() readonly aceptar = new EventEmitter<void>();
+  @Output() readonly aceptar = new EventEmitter<string>();
 
   constructor(private readonly elementRef: ElementRef<HTMLElement>) {}
 
@@ -40,7 +40,7 @@ export class TextPlusComponent implements OnInit {
 
   guardarYAceptar(): void {
     this.textoContenido.set(this.textoArea);
-    this.aceptar.emit();
+    this.aceptar.emit(this.textoArea);
   }
 
   insertarPrefijo(prefijo: string): void {

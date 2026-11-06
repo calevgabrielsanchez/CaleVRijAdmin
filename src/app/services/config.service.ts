@@ -4,9 +4,12 @@ import { ProjectDirectoryHandle, ProjectFileHandle } from '../components/view-co
 export interface PlayerBookmark {
   time: number;
   label: string;
+  title?: string;
+  note?: string;
 }
 
 export type PlayerBookmarkRecord = Record<string, PlayerBookmark[]>;
+export type PlayerProgressRecord = Record<string, number>;
 
 export interface PlayerLibraryConfig {
   id: string;
@@ -35,6 +38,7 @@ interface ConfigFileMap {
   bookmarks: PlayerBookmarkRecord;
   playerLibraries: PlayerLibraryConfig[];
   notes: AppNote[];
+  playerProgress: PlayerProgressRecord;
 }
 
 const CONFIG_FOLDER = '.calevri';
@@ -42,7 +46,8 @@ const FILES: Record<keyof ConfigFileMap, string> = {
   config: 'config.json',
   bookmarks: 'player-bookmarks.json',
   playerLibraries: 'player-libraries.json',
-  notes: 'notes.json'
+  notes: 'notes.json',
+  playerProgress: 'player-progress.json'
 };
 const README = [
   'Carpeta de configuración de CaleVRijAdmin.',
@@ -51,6 +56,7 @@ const README = [
   '- config.json: preferencias generales de la aplicación.',
   '- player-bookmarks.json: marcadores del reproductor.',
   '- player-libraries.json: registro de las bibliotecas del reproductor.',
+  '- player-progress.json: posiciones guardadas de audio y video.',
   '- notes.json: notas de la aplicación.',
   '',
   'Esta carpeta se sincroniza junto con el resto de la biblioteca principal.',
@@ -67,6 +73,7 @@ export class ConfigService {
   readonly bookmarks = signal<PlayerBookmarkRecord>({});
   readonly playerLibraries = signal<PlayerLibraryConfig[]>([]);
   readonly notes = signal<AppNote[]>([]);
+  readonly playerProgress = signal<PlayerProgressRecord>({});
   readonly ready = signal(false);
   readonly message = signal('');
 
@@ -85,6 +92,7 @@ export class ConfigService {
     this.bookmarks.set({});
     this.playerLibraries.set([]);
     this.notes.set([]);
+    this.playerProgress.set({});
     if (!root) {
       this.ready.set(true);
       return;
@@ -118,6 +126,17 @@ export class ConfigService {
   saveNotes(notes: AppNote[]): void {
     this.notes.set(notes);
     this.schedulePersist('notes');
+  }
+
+  savePlaybackProgress(key: string, time: number): void {
+    if (!key || !Number.isFinite(time)) return;
+    const next = { ...this.playerProgress(), [key]: Math.max(0, time) };
+    this.playerProgress.set(next);
+    this.schedulePersist('playerProgress');
+  }
+
+  playbackProgress(key: string): number {
+    return this.playerProgress()[key] ?? 0;
   }
 
   saveConfig(config: AppConfig): void {
@@ -155,6 +174,7 @@ export class ConfigService {
       const bookmarks = await this.readFile<PlayerBookmarkRecord>(folder, 'bookmarks');
       const playerLibraries = await this.readFile<PlayerLibraryConfig[]>(folder, 'playerLibraries');
       const notes = await this.readFile<AppNote[]>(folder, 'notes');
+      const playerProgress = await this.readFile<PlayerProgressRecord>(folder, 'playerProgress');
 
       if (config) this.config.set(config);
       if (bookmarks && this.isBookmarkRecord(bookmarks)) this.bookmarks.set(bookmarks);
@@ -167,11 +187,15 @@ export class ConfigService {
         this.playerLibraries.set(merged);
       }
       if (Array.isArray(notes)) this.notes.set(notes.filter(item => !!item && typeof item.id === 'string'));
+      if (playerProgress && typeof playerProgress === 'object' && !Array.isArray(playerProgress)) {
+        this.playerProgress.set(Object.fromEntries(Object.entries(playerProgress).filter(([, time]) => typeof time === 'number' && Number.isFinite(time) && time >= 0)));
+      }
 
       await this.writeIfMissing(folder, 'config', this.config());
       await this.writeIfMissing(folder, 'bookmarks', this.bookmarks());
       await this.writeIfMissing(folder, 'playerLibraries', this.playerLibraries());
       await this.writeIfMissing(folder, 'notes', this.notes());
+      await this.writeIfMissing(folder, 'playerProgress', this.playerProgress());
       await this.writeIfMissingText(folder, 'README.txt', README);
       this.message.set(`Configuración cargada desde ${CONFIG_FOLDER}/.`);
     } catch (error) {
@@ -220,6 +244,7 @@ export class ConfigService {
       case 'bookmarks': return this.bookmarks();
       case 'playerLibraries': return this.playerLibraries();
       case 'notes': return this.notes();
+      case 'playerProgress': return this.playerProgress();
     }
   }
 

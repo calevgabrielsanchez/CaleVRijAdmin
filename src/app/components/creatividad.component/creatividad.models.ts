@@ -26,10 +26,12 @@ export interface CreatividadData {
   creatividad: Creatividad[];
   memorias: Memoria[];
   dibujos: Dibujo[];
+  borradorCreatividad?: string;
 }
 
 export const EMPTY_CREATIVIDAD_DATA: CreatividadData = {
   creatividad: [],
   memorias: [],
-  dibujos: []
+  dibujos: [],
+  borradorCreatividad: ''
 };

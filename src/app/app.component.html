@@ -6,23 +6,27 @@
   <header class="app-header">
     <div class="brand-mark" aria-hidden="true"><img src="/CaleVRije_logo.png" alt=""></div>
     <div class="brand-copy"><p class="eyebrow">Administrador de proyectos</p><h1>{{ appName }}</h1></div>
-    <button class="status-button" type="button" [class.is-paused]="activeKey() === 'status' || activeKey() === 'menu' || activeKey() === 'library-tree'" [attr.aria-pressed]="activeKey() === 'status' || activeKey() === 'menu' || activeKey() === 'library-tree'" (click)="openStatus()">
+    <button class="status-button" type="button" [class.is-paused]="activeKey() === 'status' || activeKey() === 'menu' || activeKey() === 'library-tree' || (activeKey() === 'mente' && creatividadNuevaVisible())" [attr.aria-pressed]="activeKey() === 'status' || activeKey() === 'menu' || activeKey() === 'library-tree' || (activeKey() === 'mente' && creatividadNuevaVisible())" (click)="openStatus()">
       <span class="status-light" aria-hidden="true"></span><span>Menu</span>
     </button>
   </header>
-  <section class="content-frame" [class.spreadsheet-screen]="activeKey() === 'inicio' || activeKey() === 'libro'" [class.library-tree-screen]="activeKey() === 'library-tree' || activeKey() === 'status'" [class.player-screen]="activeKey() === 'reproductor'" [class.settings-screen]="activeKey() === 'settings'" aria-live="polite" aria-atomic="true">
+  <section class="content-frame" [class.spreadsheet-screen]="(activeKey() === 'inicio' || activeKey() === 'libro') && !!currentBook()" [class.library-tree-screen]="activeKey() === 'library-tree' || activeKey() === 'status'" [class.player-screen]="activeKey() === 'reproductor'" [class.settings-screen]="activeKey() === 'settings'" aria-live="polite" aria-atomic="true">
     <div class="screen-heading"><span class="screen-tag">{{ activeKey() === 'libro' ? currentBook()?.name : activeKey() === 'reproductor' ? currentPlayerFileName() || 'PANTALLA' : activeKey() === 'menu' ? 'MENÚ PRINCIPAL' : 'PANTALLA' }}</span><span class="screen-counter">{{ activeKey() === 'status' ? 'STATUS' : activeKey() === 'menu' ? 'MENU' : activeKey() === 'libro' ? 'LIBRO' : (activeIndex() + 1).toString().padStart(2, '0') + ' / ' + sections.length.toString().padStart(2, '0') }}</span></div>
-     <app-project-library-manager [active]="activeKey() === 'status'" (bookSelected)="onProjectBookSelected($event)" (rootHandleChange)="setProjectLibraryRoot($event)"></app-project-library-manager>
+      <app-project-library-manager [active]="activeKey() === 'status' && !creatividadNuevaVisible()" (bookSelected)="onProjectBookSelected($event)" (rootHandleChange)="setProjectLibraryRoot($event)"></app-project-library-manager>
     @if (activeKey() === 'menu') {
       <app-view-content mode="standard">
-        <div class="main-menu-screen"><h2>Menú principal</h2><p>Selecciona una sección.</p><app-main-menu [items]="sections" [activeKey]="menuReturnKey() === 'libro' ? 'inicio' : menuReturnKey()" (selected)="navigate($event)"></app-main-menu></div>
+         <div class="main-menu-screen"><h2>Menú principal</h2><p>Selecciona una sección.</p><app-main-menu [items]="sections" [activeKey]="navigationCurrentKey()" (selected)="navigate($event)"></app-main-menu></div>
       </app-view-content>
     } @else {
     <app-view-content [mode]="viewContentMode()">
-      @if (activeKey() === 'library-tree') {
+       @if (activeKey() === 'status' && creatividadNuevaVisible()) {
+         <app-creatividad-nueva></app-creatividad-nueva>
+       } @else if (activeKey() === 'library-tree') {
         <app-library-tree (fileSelected)="playLibraryFile($event)"></app-library-tree>
-      } @else if (activeKey() === 'inicio' || activeKey() === 'libro') {
+      } @else if ((activeKey() === 'inicio' || activeKey() === 'libro') && currentBook()) {
         <app-spreadsheet-section [vm]="spreadsheetVm()"></app-spreadsheet-section>
+      } @else if (activeKey() === 'inicio' || activeKey() === 'libro') {
+        <div class="no-book-selected" role="status"><span aria-hidden="true">📖</span><h2>Sin libro seleccionado</h2><p>Abre el menú y selecciona un libro para ver o editar sus hojas.</p></div>
       } @else if (activeKey() === 'reproductor') {
         <div class="player-view-placeholder" aria-hidden="true"></div>
       } @else if (activeKey() === 'datos') {
@@ -40,9 +44,18 @@
       <app-reproductor [selectedFile]="selectedLibraryFile()" (fileConsumed)="clearSelectedLibraryFile()" (currentFileNameChange)="setCurrentPlayerFileName($event)"></app-reproductor>
     </div>
   </section>
-  @if (activeKey() !== 'menu') { <app-main-menu [items]="sections" [activeKey]="activeKey()" (selected)="navigate($event)"></app-main-menu> }
+  @if (activeKey() !== 'menu') { <app-main-menu [items]="sections" [activeKey]="navigationCurrentKey()" (selected)="navigate($event)"></app-main-menu> }
   <footer class="app-footer"><span>CrealitySolution.com</span><span class="footer-vents" aria-hidden="true"></span><span>{{ version }}</span></footer>
   @if (textPlusOpen()) {
     <app-text-plus [(textoContenido)]="textPlusContent" (cerrar)="closeTextPlus()" (aceptar)="acceptTextPlus()"></app-text-plus>
+  }
+  @if (loadingMessage()) {
+    <div class="loading-backdrop" role="status" aria-live="polite" aria-label="Proceso en curso">
+      <section class="loading-dialog" aria-modal="true">
+        <span class="loading-spinner" aria-hidden="true"></span>
+        <strong>{{ loadingMessage() }}</strong>
+        <span class="loading-hint">Espera un momento, por favor.</span>
+      </section>
+    </div>
   }
 </main>

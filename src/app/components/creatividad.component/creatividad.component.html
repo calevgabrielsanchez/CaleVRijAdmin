@@ -10,6 +10,7 @@
             <button class="menu-opcion" (click)="onClickCaleVRije()">CaleVRije</button>
             <button class="menu-opcion active">Juegos</button>
             <button class="menu-opcion" (click)="onClickMente()">Mente</button>
+            <button class="menu-opcion" (click)="abrirComponenteNuevo()">Nuevo componente</button>
         </nav>
 
         <nav class="menu-lista">
@@ -26,9 +27,9 @@
 @if (storageMessage) { <p class="storage-message" role="status">{{ storageMessage }}</p> }
 @if (catalogMessage) { <p class="storage-message" role="alert">{{ catalogMessage }}</p> }
 <main class="main-content">
-    <div class="control-panel">
-        <div class="row-universo">
-            <label>Menu:</label>
+    <div id="control-panel" class="control-panel">
+        <div id="selector-juego" class="row-universo">
+            <button type="button" class="square-btn light-txt creativity-menu-toggle" aria-label="Abrir menú de Creatividad" title="Abrir menú de Creatividad" (click)="mostrarMenu()"><fa-icon size="2x" [icon]="faBurger"></fa-icon></button>
             <div class="btn-group-four">
                 <button class="square-btn light-txt" (click)="selectJuego('creatividad')"><fa-icon size="2x"
                         [class.active]="creatividad" [icon]="faUserSecret"></fa-icon></button>
@@ -147,7 +148,7 @@
             </div>
         </div>
 
-        <div [hidden]="!memoriaB">
+        <div id="memoria-div" [hidden]="!memoriaB">
             <div class="row-universo">
                 <div class="btn-group-four">
                     <button class="square-btn light-txt" (click)="guardarMemoria()"><fa-icon size="2x"
@@ -167,7 +168,7 @@
                         <th class="controls">
                             <button class="square-btn light-txt" (click)="ocultarTodasPalabra()"><fa-icon size="2x"
                                     [icon]="faEye"></fa-icon></button>
-                            <button class="square-btn light-txt" (click)="escribirTodaHistoria()"><fa-icon size="2x"
+                            <button class="square-btn light-txt" id="escribirTodaHistoria" (click)="escribirTodaHistoria()"><fa-icon size="2x"
                                     [icon]="faBookOpen"></fa-icon></button>
                             <button class="square-btn light-txt" (click)="alternarPalabra()"><fa-icon size="2x"
                                     [icon]="faArrowsSpin"></fa-icon></button>
@@ -185,7 +186,7 @@
                         <td><input type="text" class="input-text" id="text{{item.id}}"></td>
                         <td class="controls"><button class="square-btn light-txt" [attr.data-id]="'text' + item.id"
                                 (click)="ocultarPalabra($event)"><fa-icon size="2x" [icon]="faEye"></fa-icon></button>
-                            <button class="square-btn light-txt" [attr.data-id]="'text' + item.id"
+                            <button class="square-btn light-txt" id="escribirHistoria{{item.id}}" [attr.data-id]="'text' + item.id"
                                 (click)="escribirHistoria($event)"><fa-icon size="2x"
                                     [icon]="faBookOpen"></fa-icon></button>
                         </td>
@@ -199,10 +200,10 @@
 
         </div>
 
-        <div [hidden]="!matematicas">
+        <div id="matematicas-div" [hidden]="!matematicas">
             <div id="tienda" class="contenedor-inputs-mat">
                 <input type="text" name="numero1" id="numero1">
-                <input type="text" name="operacion" id="operacion">
+                <input type="text" name="operacion" id="operacion" [placeholder]="controlesTienda.get('juegoSeleccionada')?.value === 'completar' ? '¿+ o −?' : ''" aria-label="Operación" (keyup.enter)="onEnterResultadoTienda()">
                 <input type="text" name="numero2" id="numero2">
                 <input type="text" name="resultado" id="resultado" (keyup.enter)="onEnterResultadoTienda()">
             </div>
@@ -234,7 +235,7 @@
             </div>
         </div>
 
-        <div [hidden]="!dibujo">
+        <div id="dibujo-div" [hidden]="!dibujo">
 
             <div class="app">
                 <div class="controls">
@@ -267,10 +268,11 @@
                 </div>
             </div>
         </div>
+        @if (nuevaSeccionActiva) { <app-creatividad-nueva></app-creatividad-nueva> }
     </div>
 </main>
 
 
 @if (mostrarTextPlus()) {
-<app-text-plus [(textoContenido)]="textoAEditar" (cerrar)="cerrar()" (aceptar)="aceptar()"></app-text-plus>
+<app-text-plus [(textoContenido)]="textoAEditar" (cerrar)="cerrar()" (aceptar)="aceptar($event)"></app-text-plus>
 }

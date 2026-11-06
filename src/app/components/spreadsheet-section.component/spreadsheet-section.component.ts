@@ -28,6 +28,7 @@ export interface SpreadsheetViewModel {
   isCoveredCell: (row: number, col: number) => boolean;
   hasCellExtraText: (row: number, col: number) => boolean;
   selectedCellText: () => string;
+  saveAndMoveCell: (value: string, direction: 'vertical' | 'horizontal') => void;
   startResize: (axis: 'column' | 'row', index: number, event: PointerEvent) => void;
   resizeDimension: (event: PointerEvent) => void;
   stopResize: () => void;
@@ -65,6 +66,7 @@ export class SpreadsheetSectionComponent {
   private draggedSelection = false;
   private rangeSelectionArmed = false;
   private suppressNextClick = false;
+  cellNavigationMode: 'vertical' | 'horizontal' = 'vertical';
 
   openSheetProperties(): void {
     const sheet = this.vm.sheets[this.vm.currentSheetIndex];
@@ -82,6 +84,16 @@ export class SpreadsheetSectionComponent {
       return;
     }
     this.sheetPropertiesOpen = false;
+  }
+
+  toggleCellNavigationMode(): void {
+    this.cellNavigationMode = this.cellNavigationMode === 'vertical' ? 'horizontal' : 'vertical';
+  }
+
+  handleCellEditorEnter(event: Event): void {
+    event.preventDefault();
+    const textarea = event.target as HTMLTextAreaElement;
+    this.vm.saveAndMoveCell(textarea.value, this.cellNavigationMode);
   }
 
   toggleSheetMenu(): void {

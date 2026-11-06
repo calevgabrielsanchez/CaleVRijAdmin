@@ -1,4 +1,4 @@
-import { Component, ElementRef, EventEmitter, Input, OnDestroy, Output, ViewChild, inject } from '@angular/core';
+import { Component, ElementRef, EventEmitter, HostListener, Input, OnDestroy, Output, ViewChild, inject } from '@angular/core';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { Capacitor } from '@capacitor/core';
 import type { PluginListenerHandle } from '@capacitor/core';
@@ -30,10 +30,13 @@ export class ReproductorComponent implements OnDestroy {
   @Input()
   set selectedFile(file: File | LibraryMediaSource | null) {
     if (!file) return;
+    this.saveCurrentProgress(true);
     this.currentMedia?.pause();
     for (const item of this.playlist) this.releasePlaylistItem(item);
     this.playlist = [this.createPlaylistItem(file)];
     this.currentIndex = 0;
+    this.restoredProgressKey = '';
+    this.lastProgressSavedAt = 0;
     this.currentTime = 0;
     this.duration = 0;
     this.isPlaying = false;
@@ -72,6 +75,9 @@ export class ReproductorComponent implements OnDestroy {
   imagePanY = 0;
   pdfZoom = 1;
   bookmarksModalOpen = false;
+  editingBookmarkIndex = -1;
+  bookmarkTitleDraft = '';
+  bookmarkNoteDraft = '';
   message = '';
   messageFading = false;
   get bookmarksByFile(): Record<string, PlayerBookmark[]> { return this.config.bookmarks(); }
@@ -92,6 +98,8 @@ export class ReproductorComponent implements OnDestroy {
   private messageClearTimer?: ReturnType<typeof setTimeout>;
   private mediaActionListener?: PluginListenerHandle;
   private lastNotificationUpdate = 0;
+  private restoredProgressKey = '';
+  private lastProgressSavedAt = 0;
 
   constructor() {
     void this.config.whenReady();
@@ -103,6 +111,7 @@ export class ReproductorComponent implements OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.saveCurrentProgress(true);
     this.currentMedia?.pause();
     this.setPlaybackAwake(false);
     void this.mediaActionListener?.remove();
@@ -135,6 +144,7 @@ export class ReproductorComponent implements OnDestroy {
     if (this.currentIndex < 0) {
       this.playlist = newItems;
       this.currentIndex = 0;
+      this.restoredProgressKey = '';
       this.currentTime = 0;
       this.duration = 0;
       this.isPlaying = false;
@@ -153,8 +163,11 @@ export class ReproductorComponent implements OnDestroy {
 
   selectFile(index: number): void {
     if (index < 0 || index >= this.playlist.length || index === this.currentIndex) return;
+    this.saveCurrentProgress(true);
     this.currentMedia?.pause();
     this.currentIndex = index;
+    this.restoredProgressKey = '';
+    this.lastProgressSavedAt = 0;
     this.currentTime = 0;
     this.duration = 0;
     this.isPlaying = false;
@@ -251,6 +264,7 @@ export class ReproductorComponent implements OnDestroy {
   }
 
   mediaPaused(): void {
+    this.saveCurrentProgress(true);
     this.isPlaying = false;
     this.showPlaybackControls = true;
     this.setPlaybackAwake(false);
@@ -343,6 +357,7 @@ export class ReproductorComponent implements OnDestroy {
   updateTime(): void {
     if (this.currentMedia) {
       this.currentTime = this.currentMedia.currentTime;
+      this.saveCurrentProgress();
       this.syncMediaNotification();
     }
   }
@@ -350,22 +365,82 @@ export class ReproductorComponent implements OnDestroy {
   updateDuration(): void {
     if (this.currentMedia && Number.isFinite(this.currentMedia.duration)) {
       this.duration = this.currentMedia.duration;
+      const item = this.currentItem;
+      if (item && this.restoredProgressKey !== item.key) {
+        this.restoredProgressKey = item.key;
+        const savedTime = this.config.playbackProgress(item.key);
+        if (savedTime > 0 && (!this.duration || savedTime < this.duration - 1)) {
+          this.currentMedia.currentTime = savedTime;
+          this.currentTime = savedTime;
+        } else if (savedTime > 0) {
+          this.config.savePlaybackProgress(item.key, 0);
+        }
+      }
       this.syncMediaNotification(true);
     }
+  }
+
+  @HostListener('document:visibilitychange')
+  onVisibilityChange(): void {
+    this.saveCurrentProgress(true);
+    if (document.visibilityState === 'hidden') void this.config.flush();
+  }
+
+  private saveCurrentProgress(force = false): void {
+    const item = this.currentItem;
+    if (!item || !this.canSeek) return;
+    const now = Date.now();
+    if (!force && now - this.lastProgressSavedAt < 3000) return;
+    const position = this.currentMedia?.currentTime ?? this.currentTime;
+    this.config.savePlaybackProgress(item.key, position);
+    this.lastProgressSavedAt = now;
+  }
+
+  mediaEnded(): void {
+    const item = this.currentItem;
+    if (item) this.config.savePlaybackProgress(item.key, 0);
+    this.next(true);
   }
 
   addBookmark(): void {
     const item = this.currentItem;
     if (!item || !this.canSeek) return;
     const time = this.currentMedia?.currentTime ?? this.currentTime;
-    const bookmarks = [...this.currentBookmarks, { time, label: this.formatTime(time) }];
+    const number = this.currentBookmarks.length + 1;
+    const bookmarks = [...this.currentBookmarks, { time, label: this.formatTime(time), title: `Marcador ${number}`, note: '' }];
     this.config.saveBookmarks({ ...this.bookmarksByFile, [item.key]: bookmarks });
     this.setMessage(`Marcador guardado en ${this.formatTime(time)}.`);
   }
 
   openBookmarksModal(): void { this.bookmarksModalOpen = true; }
 
-  closeBookmarksModal(): void { this.bookmarksModalOpen = false; }
+  closeBookmarksModal(): void { this.bookmarksModalOpen = false; this.cancelBookmarkEdit(); }
+
+  editBookmark(index: number): void {
+    const bookmark = this.currentBookmarks[index];
+    if (!bookmark) return;
+    this.editingBookmarkIndex = index;
+    this.bookmarkTitleDraft = bookmark.title || bookmark.label || `Marcador ${index + 1}`;
+    this.bookmarkNoteDraft = bookmark.note ?? '';
+  }
+
+  saveBookmarkDetails(): void {
+    const index = this.editingBookmarkIndex;
+    const bookmark = this.currentBookmarks[index];
+    const title = this.bookmarkTitleDraft.trim();
+    if (!bookmark || !title) {
+      this.setMessage('Escribe un título para el marcador.');
+      return;
+    }
+    const updated = this.currentBookmarks.map((item, itemIndex) => itemIndex === index
+      ? { ...item, title, label: title, note: this.bookmarkNoteDraft.trim() }
+      : item);
+    this.config.saveBookmarks({ ...this.bookmarksByFile, [this.currentItem!.key]: updated });
+    this.editingBookmarkIndex = -1;
+    this.setMessage('Marcador actualizado.');
+  }
+
+  cancelBookmarkEdit(): void { this.editingBookmarkIndex = -1; }
 
   deleteBookmark(index: number): void {
     const item = this.currentItem;

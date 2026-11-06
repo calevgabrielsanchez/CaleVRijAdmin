@@ -14,6 +14,7 @@ import { CommonModule } from '@angular/common';
 import { ProjectDirectoryHandle } from '../view-content.component/project-library-manager.component';
 import { CreatividadStorageService } from './creatividad-storage.service';
 import { Creatividad, CreatividadData, Dibujo, Memoria } from './creatividad.models';
+import { CreatividadNuevaComponent } from '../menu.creatividad.component/creatividad-nueva.component';
 
 interface EjercicioCreatividad {
   id: number;
@@ -33,7 +34,7 @@ interface ArquetipoCreatividad {
 @Component({
   selector: 'app-creatividad',
   standalone: true,
-  imports: [TextPlusComponent, FaIconComponent, CommonModule, ReactiveFormsModule],
+  imports: [TextPlusComponent, CreatividadNuevaComponent, FaIconComponent, CommonModule, ReactiveFormsModule],
   templateUrl: './creatividad.component.html',
   styleUrl: './creatividad.component.css',
 })
@@ -56,6 +57,7 @@ export class CreatividadComponent {
   memoria = {} as Memoria;
   dibujoModel = {} as Dibujo;
   creatividadModel = {} as Creatividad;
+  private editingCreatividadId: string | null = null;
 
   faSave = faSave;
   faFileHalfDashed = faFileHalfDashed;
@@ -119,6 +121,7 @@ export class CreatividadComponent {
   memoriaB: boolean = false;
   matematicas: boolean = false;
   dibujo: boolean = false;
+  nuevaSeccionActiva = false;
   //=========================================================
   //                FUNCIONES
   //=========================================================
@@ -222,6 +225,8 @@ export class CreatividadComponent {
       this.savedMemorias = data.memorias;
       this.savedDibujos = data.dibujos;
       this.creatividadModel = this.savedCreatividades.at(-1) ?? ({} as Creatividad);
+      this.textoAEditar = data.borradorCreatividad || this.creatividadModel.desarrollo || '';
+      if (data.borradorCreatividad) this.creatividadModel = { ...this.creatividadModel, desarrollo: data.borradorCreatividad };
       this.memoria = this.savedMemorias.at(-1) ?? ({} as Memoria);
       this.dibujoModel = this.savedDibujos.at(-1) ?? ({} as Dibujo);
       this.storageMessage = 'Datos cargados desde la carpeta Creatividad de la biblioteca.';
@@ -240,7 +245,8 @@ export class CreatividadComponent {
     const data: CreatividadData = {
       creatividad: this.savedCreatividades,
       memorias: this.savedMemorias,
-      dibujos: this.savedDibujos
+      dibujos: this.savedDibujos,
+      borradorCreatividad: this.textoAEditar
     };
     try {
       await this.storage.save(this.selectedLibraryRoot, data);
@@ -263,7 +269,8 @@ export class CreatividadComponent {
   }
 
   
-  aceptar() {
+  aceptar(textoConfirmado: string) {
+    this.textoAEditar = textoConfirmado;
     switch (this.controlTextPlus) {
       case 'memoria':
         this.historia[this.inputId - 1] = this.textoAEditar;
@@ -275,10 +282,15 @@ export class CreatividadComponent {
         console.log(this.textoAEditar)
         this.mostrarTextPlus.set(false);
         break;
-       case 'creatividad':
-        this.creatividadModel.desarrollo = this.textoAEditar;
-        console.log(this.textoAEditar)
+      case 'creatividad':
+        this.creatividadModel = { ...this.creatividadModel, desarrollo: textoConfirmado, updatedAt: Date.now() };
+        if (this.editingCreatividadId) {
+          this.savedCreatividades = this.savedCreatividades.map(item => item.id === this.editingCreatividadId
+            ? { ...item, desarrollo: textoConfirmado, updatedAt: this.creatividadModel.updatedAt }
+            : item);
+        }
         this.mostrarTextPlus.set(false);
+        void this.guardarBorradorCreatividad();
         break; 
     }
 
@@ -300,6 +312,15 @@ export class CreatividadComponent {
 
   onClickMente() {
     this.mostrarMenuModal = false;
+  }
+
+  abrirComponenteNuevo(): void {
+    this.selectJuego('nuevo');
+    this.mostrarMenuModal = false;
+  }
+
+  showNewComponent(): void {
+    this.abrirComponenteNuevo();
   }
   //==========================================================
   //                       Ejercicios Creatividad
@@ -398,6 +419,7 @@ export class CreatividadComponent {
     this.memoriaB = false;
     this.matematicas = false;
     this.dibujo = false;
+    this.nuevaSeccionActiva = false;
     switch (juego) {
       case 'creatividad':
         this.creatividad = true;
@@ -411,21 +433,43 @@ export class CreatividadComponent {
       case 'dibujo':
         this.dibujo = true;
         break;
+      case 'nuevo':
+        this.nuevaSeccionActiva = true;
+        break;
     }
   }
 
   onEscribirEjercicioCreatividad() {
     this.controlTextPlus='creatividad';
-    this.mostrarTextPlus.set(true);
     let ejercicioTextInput = document.getElementById("ejercicio") as HTMLSelectElement;
     let titulo = ejercicioTextInput.options[ejercicioTextInput.selectedIndex].text;
     let arquetipoTextInput = document.getElementById("arquetipo") as HTMLSelectElement;
     let arquetipo = arquetipoTextInput.options[arquetipoTextInput.selectedIndex].text;
     let palabras = this.palabras().map(p => p.palabra).join("\n");
-    this.textoAEditar = "#" + titulo + "\n" + this.descripcionEjercicioSeleccionado + "\n" +
+    const textoGenerado = "#" + titulo + "\n" + this.descripcionEjercicioSeleccionado + "\n" +
       "#" + arquetipo + "\n" + this.descripcionArquetipoSeleccionado + "\n" +
-      "#Palabras" + "\n" + palabras + "\n ----------------------Empieza----------------------";
-    console.log(this.textoAEditar);
+      "#Palabras" + "\n" + palabras + "\n **----------------------Empieza----------------------**";
+    this.textoAEditar = this.creatividadModel.desarrollo || textoGenerado;
+    this.mostrarTextPlus.set(true);
+  }
+
+  private async guardarBorradorCreatividad(): Promise<void> {
+    const root = this.selectedLibraryRoot;
+    if (!root) {
+      this.storageMessage = 'El borrador está disponible durante esta sesión. Selecciona una biblioteca para guardarlo en .calevri/creatividad.json.';
+      return;
+    }
+    try {
+      await this.storage.save(root, {
+        creatividad: this.savedCreatividades,
+        memorias: this.savedMemorias,
+        dibujos: this.savedDibujos,
+        borradorCreatividad: this.textoAEditar
+      });
+      this.storageMessage = 'Borrador guardado en .calevri/creatividad.json.';
+    } catch {
+      this.storageMessage = 'No se pudo guardar el borrador en .calevri/creatividad.json.';
+    }
   }
 
   async onGuardarCreatividad() {
@@ -443,6 +487,7 @@ export class CreatividadComponent {
       updatedAt: Date.now(),
       _deleted: false
     };
+    this.editingCreatividadId = this.creatividadModel.id;
 
     this.savedCreatividades = [...this.savedCreatividades.filter(item => item.id !== this.creatividadModel.id), this.creatividadModel];
     await this.onGuardarCambios();
@@ -470,6 +515,8 @@ export class CreatividadComponent {
     }
 
     const seleccionada = creaciones[numero - 1];
+    this.creatividadModel = { ...seleccionada };
+    this.editingCreatividadId = seleccionada.id;
     this.textoAEditar = seleccionada.desarrollo;
     this.abrirEditarText();
 
@@ -560,9 +607,9 @@ export class CreatividadComponent {
     this.inputId = parseInt(numeroId || '')
     const inputText = document.getElementById(id || '');
     if ((this.historia[this.inputId - 1] != (inputText as HTMLInputElement).value) && (this.historia[this.inputId - 1] != '')) {
-      this.textoAEditar = this.historia[this.inputId - 1];
+      this.textoAEditar = `${this.historia[this.inputId - 1]}`;
     } else {
-      this.textoAEditar = (inputText as HTMLInputElement).value
+      this.textoAEditar = `${(inputText as HTMLInputElement).value}`
     }
     this.controlTextPlus='memoria';
     this.mostrarTextPlus.set(true);
@@ -571,8 +618,10 @@ export class CreatividadComponent {
   escribirTodaHistoria() {
     let texto = '';
     for (let i = 0; i < 20; i++) {
-      texto = texto + '>----------------' + (i + 1) + '----------------<\n';
-      texto = texto + this.historia[i] + "\n";
+      const key = this.tablaMemoria()[i]?.key ?? '';
+      texto = texto + `- ${i + 1} ${key}\n`;
+      const historiaConPrefijo = String(this.historia[i] ?? '').split(/\r?\n/).map(linea => `--${linea}`).join('\n');
+      texto = texto + `${historiaConPrefijo}\n`;
     }
     this.controlTextPlus='memoria';
     this.textoAEditar = texto;
@@ -1330,6 +1379,7 @@ export class CreatividadComponent {
     if (resta) aleatorioOperaciones.push(1);
     if (multiplicacion) aleatorioOperaciones.push(2);
     if (divicion) aleatorioOperaciones.push(3);
+    if (!aleatorioOperaciones.length) aleatorioOperaciones = [0, 1, 2, 3];
     const indiceAleatorio = Math.floor(Math.random() * aleatorioOperaciones.length);
     const valorAleatorio = aleatorioOperaciones[indiceAleatorio];
 
@@ -1362,7 +1412,7 @@ export class CreatividadComponent {
         resultado = numero1 * numero2
         break;
       case '/':
-        resultado = numero1 / numero2
+        resultado = parseFloat((numero1 / numero2).toFixed(1));
         break;
     }
     this.resultadoTienda = resultado;
@@ -1382,47 +1432,43 @@ export class CreatividadComponent {
   }
 
   onEnterResultadoTienda() {
+    if (this.controlesTienda.get('juegoSeleccionada')?.value === 'completar') {
+      const operacionText = document.getElementById('operacion') as HTMLInputElement | null;
+      const respuesta = operacionText?.value.trim();
+      if (respuesta === this.operacionResultado) {
+        if (operacionText) operacionText.value = '';
+        this.generarJuegMatematicCompletar();
+      } else {
+        alert('Operación incorrecta. Intenta de nuevo.');
+        if (operacionText) { operacionText.value = ''; operacionText.focus(); }
+      }
+      return;
+    }
+
     const resultadoText = document.getElementById('resultado');
-    const resultado = (resultadoText as HTMLInputElement).value;
-    if (parseFloat(resultado) == this.resultadoTienda || this.operacionResultado == resultado) {
-      (resultadoText as HTMLInputElement).value = '';
+    const resultado = Number((resultadoText as HTMLInputElement | null)?.value);
+    if (Number.isFinite(resultado) && Math.abs(resultado - this.resultadoTienda) < 0.051) {
+      if (resultadoText) (resultadoText as HTMLInputElement).value = '';
       this.generarJuegMatematic();
     } else {
       alert("Te fallo amigo, vuelve a intentarlo. ntp.");
-      (resultadoText as HTMLInputElement).value = '';
+      if (resultadoText) (resultadoText as HTMLInputElement).value = '';
     }
 
   }
   generarJuegMatematicPorcentaje() {
     const decimal = this.controlesTienda.get('decimal')?.value;
+    const porcentaje = Math.floor(Math.random() * 100) + 1;
+    const valor = decimal
+      ? Number((Math.random() * (1000 - 10) + 10).toFixed(1))
+      : Math.floor(Math.random() * (1000 - 10 + 1)) + 10;
+    const resultado = Number(((porcentaje / 100) * valor).toFixed(1));
 
-    let numero1 = 0;
-    let numero2 = 0;
-    let resultado = 0;
-    if (decimal) {
-      const numeroAleatorio: number = Number((Math.random() * (99.9 - 10.0) + 10.0).toFixed(1));
-      numero1 = numeroAleatorio;
-      const numeroAleatorio2: number = Math.floor(Math.random() * 10) + 1;
-      numero2 = numeroAleatorio2;
-    } else {
-      const numeroAleatorio3: number = Math.floor(Math.random() * 99) + 1;
-      numero1 = numeroAleatorio3;
-      const numeroAleatorio4: number = Math.floor(Math.random() * 10) + 1;
-      numero2 = numeroAleatorio4;
-    }
-
-    resultado = (numero2 / 100) * numero1;
-
-    const inputText1 = document.getElementById('numero1');
-    (inputText1 as HTMLInputElement).value = numero2.toString();
-    const inputText2 = document.getElementById('numero2');
-    (inputText2 as HTMLInputElement).value = numero1.toString();
-    const operacionText = document.getElementById('operacion');
-    (operacionText as HTMLInputElement).value = '%';
-    const resultadoText = document.getElementById('resultado');
-    (resultadoText as HTMLInputElement).value = '';
-
-    this.resultadoTienda = parseFloat((resultado).toFixed(1));
+    (document.getElementById('numero1') as HTMLInputElement).value = porcentaje.toString();
+    (document.getElementById('numero2') as HTMLInputElement).value = valor.toString();
+    (document.getElementById('operacion') as HTMLInputElement).value = '%';
+    (document.getElementById('resultado') as HTMLInputElement).value = '';
+    this.resultadoTienda = resultado;
   }
 
   generarJuegMatematicRaiz() {
@@ -1441,65 +1487,24 @@ export class CreatividadComponent {
 
   generarJuegMatematicCompletar() {
     const decimal = this.controlesTienda.get('decimal')?.value;
-    const tienda = this.controlesTienda.get('tienda')?.value;
-    const suma = this.controlesTienda.get('suma')?.value;
-    const resta = this.controlesTienda.get('resta')?.value;
-    const multiplicacion = this.controlesTienda.get('multiplicacion')?.value;
-    const divicion = this.controlesTienda.get('divicion')?.value;
+    const valorAleatorio = (): number => decimal
+      ? Number(((Math.floor(Math.random() * 900) + 100) / 10).toFixed(1))
+      : Math.floor(Math.random() * 100) + 1;
+    let numero1 = valorAleatorio();
+    let numero2 = valorAleatorio();
+    const operacion = Math.random() < 0.5 ? '+' : '-';
 
-    let operaciones = ['+', '-', '*', '/'];
-    let aleatorioOperaciones = []
+    if (operacion === '-' && numero2 > numero1) [numero1, numero2] = [numero2, numero1];
+    const resultado = decimal
+      ? Number((operacion === '+' ? numero1 + numero2 : numero1 - numero2).toFixed(1))
+      : operacion === '+' ? numero1 + numero2 : numero1 - numero2;
 
-    if (suma) { aleatorioOperaciones.push(0); }
-    if (resta) aleatorioOperaciones.push(1);
-    if (multiplicacion) aleatorioOperaciones.push(2);
-    if (divicion) aleatorioOperaciones.push(3);
-    const indiceAleatorio = Math.floor(Math.random() * aleatorioOperaciones.length);
-    const valorAleatorio = aleatorioOperaciones[indiceAleatorio];
-
-    const operacion = operaciones[valorAleatorio];
-
-    let numero1 = 0;
-    let numero2 = 0;
-    let resultado = 0;
-    if (decimal) {
-      const numeroAleatorio: number = Number((Math.random() * (99.9 - 10.0) + 10.0).toFixed(1));
-      numero1 = tienda ? this.resultadoTienda : numeroAleatorio;
-      const numeroAleatorio2: number = Number((Math.random() * (99.9 - 10.0) + 10.0).toFixed(1));
-      numero2 = numeroAleatorio2;
-    } else {
-      const numeroAleatorio3: number = Math.floor(Math.random() * 99) + 1;
-      numero1 = tienda ? this.resultadoTienda : numeroAleatorio3;
-      const numeroAleatorio4: number = Math.floor(Math.random() * 99) + 1;
-      numero2 = numeroAleatorio4;
-      console.log(numero1, numero2)
-    }
-
-    switch (operacion) {
-      case '+':
-        resultado = numero1 + numero2
-        break;
-      case '-':
-        resultado = numero1 - numero2
-        break;
-      case '*':
-        resultado = numero1 * numero2
-        break;
-      case '/':
-        resultado = numero1 / numero2
-        break;
-    }
-    this.resultadoTienda = -1;
+    this.resultadoTienda = resultado;
     this.operacionResultado = operacion;
-
-    const inputText1 = document.getElementById('numero1');
-    (inputText1 as HTMLInputElement).value = numero1.toString();
-    const inputText2 = document.getElementById('numero2');
-    (inputText2 as HTMLInputElement).value = resultado.toString();
-    const operacionText = document.getElementById('operacion');
-    (operacionText as HTMLInputElement).value = numero2.toString();
-    const resultadoText = document.getElementById('resultado');
-    //(resultadoText as HTMLInputElement).value = ;
+    (document.getElementById('numero1') as HTMLInputElement).value = numero1.toString();
+    (document.getElementById('operacion') as HTMLInputElement).value = '';
+    (document.getElementById('numero2') as HTMLInputElement).value = numero2.toString();
+    (document.getElementById('resultado') as HTMLInputElement).value = resultado.toString();
   }
 
   escribirHistoriaDibujo() {

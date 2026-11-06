@@ -88,6 +88,7 @@
 }
 
 .row-universo label { color: #eafaff; font-size: 12px; font-weight: 800; }
+.creativity-menu-toggle { width: 34px; min-width: 34px; height: 34px; min-height: 34px; flex-basis: 34px; }
 .btn-group-four { display: flex; flex-wrap: wrap; gap: 5px; }
 .square-btn { display: inline-grid; width: 26px; height: 26px; min-width: 26px; min-height: 26px; flex: 0 0 26px; padding: 0; place-items: center; border: 1px solid #172329; border-radius: 4px; background: linear-gradient(#596366, #303638); color: #f147bd; cursor: pointer; }
 .square-btn fa-icon,

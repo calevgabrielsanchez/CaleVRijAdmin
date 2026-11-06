@@ -9,9 +9,11 @@ import { SettingsComponent } from './components/settings/settings.component';
 import { ViewContentComponent, ViewContentMode } from './components/view-content.component/view-content.component';
 import { ProjectDirectoryHandle as DirectoryHandle, ProjectLibraryManagerComponent, ProjectLibraryNode as TreeNode } from './components/view-content.component/project-library-manager.component';
 import { CreatividadComponent } from './components/creatividad.component/creatividad.component';
+import { CreatividadNuevaComponent } from './components/menu.creatividad.component/creatividad-nueva.component';
 import { ConfigService } from './services/config.service';
-import type { LibraryMediaSource } from './services/library-tree.service';
 import { LibraryTreeService } from './services/library-tree.service';
+import { P2PSyncService } from './components/settings/p2p-sync.service';
+import type { LibraryMediaSource } from './services/library-tree.service';
 
 interface AppSection {
   key: string;
@@ -26,14 +28,22 @@ interface AppSection {
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [TextPlusComponent, LibraryTreeComponent, MainMenuComponent, SpreadsheetSectionComponent, ReproductorComponent, DataSectionComponent, SettingsComponent, ViewContentComponent, ProjectLibraryManagerComponent, CreatividadComponent],
+  imports: [TextPlusComponent, LibraryTreeComponent, MainMenuComponent, SpreadsheetSectionComponent, ReproductorComponent, DataSectionComponent, SettingsComponent, ViewContentComponent, ProjectLibraryManagerComponent, CreatividadComponent, CreatividadNuevaComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class AppComponent {
   @ViewChild(TextPlusComponent) private textPlusInstance?: TextPlusComponent;
+  @ViewChild(CreatividadComponent) private creatividadInstance?: CreatividadComponent;
   private readonly config = inject(ConfigService);
+  private readonly sync = inject(P2PSyncService);
+  readonly loadingMessage = computed(() => {
+    if (this.sync.syncing()) return 'Sincronizando bibliotecas…';
+    const scan = this.libraryTree.progress();
+    if (scan?.running) return `Cargando biblioteca… ${scan.scanned} elementos (${scan.percent}%)`;
+    return '';
+  });
   private readonly libraryTree = inject(LibraryTreeService);
   readonly appName = 'CaleVRijAdmin';
   readonly version = 'v1.0.0';
@@ -47,9 +57,16 @@ export class AppComponent {
   readonly activeKey = signal('status');
   readonly menuReturnKey = signal(this.sections[0].key);
   readonly activeSection = computed(() => this.sections.find((section) => section.key === this.activeKey()) ?? this.sections[0]);
+  readonly navigationCurrentKey = computed(() => {
+    const active = this.activeKey();
+    const remembered = this.menuReturnKey() === 'libro' ? 'inicio' : this.menuReturnKey();
+    const key = ['status', 'menu', 'library-tree'].includes(active) ? remembered : active;
+    return this.sections.some(section => section.key === key) ? key : this.sections[0].key;
+  });
   readonly activeIndex = computed(() => this.sections.findIndex((section) => section.key === this.activeKey()));
   readonly viewContentMode = computed<ViewContentMode>(() => this.activeKey() === 'inicio' || this.activeKey() === 'libro' ? 'spreadsheet' : this.activeKey() === 'library-tree' ? 'library-tree' : this.activeKey() === 'reproductor' ? 'player' : this.activeKey() === 'settings' ? 'settings' : 'standard');
   readonly paused = signal(false);
+  readonly creatividadNuevaVisible = signal(false);
   readonly actionMessage = signal('');
   readonly selectedLibraryFile = signal<File | LibraryMediaSource | null>(null);
   readonly currentPlayerFileName = signal('');
@@ -80,6 +97,7 @@ export class AppComponent {
     isCoveredCell: (row, col) => this.isCoveredCell(row, col),
     hasCellExtraText: (row, col) => this.hasCellExtraText(row, col),
     selectedCellText: () => this.selectedCellText(),
+    saveAndMoveCell: (value, direction) => this.saveAndMoveCell(value, direction),
     startResize: (axis, index, event) => this.startResize(axis, index, event),
     resizeDimension: event => this.resizeDimension(event),
     stopResize: () => this.stopResize(),
@@ -119,6 +137,7 @@ export class AppComponent {
 
   navigate(key: string): void {
     if (this.sections.some((section) => section.key === key)) {
+      this.creatividadNuevaVisible.set(false);
       if (key === 'library-tree') {
         if (this.activeKey() !== 'menu' && this.activeKey() !== 'library-tree') this.menuReturnKey.set(this.activeKey());
       } else this.menuReturnKey.set(key);
@@ -130,11 +149,16 @@ export class AppComponent {
 
   openStatus(): void {
     const active = this.activeKey();
-    if (active === 'reproductor') {
+    if (active === 'mente') {
+      this.menuReturnKey.set('mente');
+      this.creatividadNuevaVisible.set(true);
+      this.activeKey.set('status');
+    } else if (active === 'reproductor') {
       this.currentPlayerFileName.set('');
       this.menuReturnKey.set('reproductor');
       this.activeKey.set('library-tree');
     } else if (active === 'menu' || active === 'library-tree' || active === 'status') {
+      if (active === 'status' && this.creatividadNuevaVisible()) this.creatividadNuevaVisible.set(false);
       this.activeKey.set(this.menuReturnKey() || this.sections[0].key);
     } else if (active === 'inicio' || active === 'libro') {
       this.menuReturnKey.set(active);
@@ -242,6 +266,19 @@ export class AppComponent {
     this.updateCurrentSheet(sheet => { sheet.cells[this.cellKey(row, col)] = value; });
   }
 
+  saveAndMoveCell(value: string, direction: 'vertical' | 'horizontal'): void {
+    const [row, col] = this.selectionEnd();
+    // Commit the current editor value and queue the normal debounced file save before moving.
+    this.updateCurrentSheet(sheet => { sheet.cells[this.cellKey(row, col)] = value; });
+
+    let nextRow = row;
+    let nextCol = col;
+    if (direction === 'vertical') nextRow = Math.min(this.rowNumbers.length - 1, row + 1);
+    else nextCol = Math.min(this.columns.length - 1, col + 1);
+    this.selectionAnchor.set([nextRow, nextCol]);
+    this.selectionEnd.set([nextRow, nextCol]);
+  }
+
   openTextPlus(): void {
     this.textPlusTarget = [...this.selectionEnd()];
     this.textPlusContent = this.cellExtraText(...this.textPlusTarget);
@@ -250,9 +287,9 @@ export class AppComponent {
 
   closeTextPlus(): void { this.textPlusOpen.set(false); }
 
-  acceptTextPlus(): void {
+  acceptTextPlus(text?: string): void {
     const [row, col] = this.textPlusTarget;
-    const value = this.textPlusInstance?.textoArea ?? this.textPlusContent;
+    const value = text ?? this.textPlusInstance?.textoArea ?? this.textPlusContent;
     this.updateCurrentSheet(sheet => { sheet.extraTexts[this.cellKey(row, col)] = value; });
     this.textPlusOpen.set(false);
   }
@@ -377,13 +414,14 @@ export class AppComponent {
     try {
       const loaded: SheetData[] = [];
       for await (const [name, entry] of book.handle.entries()) {
-        if (entry.kind !== 'directory' || !/^Hoja\s+\d+$/i.test(name)) continue;
+        if (entry.kind !== 'directory') continue;
+        const isLegacySheetFolder = /^Hoja\s+\d+$/i.test(name);
         const folder = entry;
         try {
           const file = await (await folder.getFileHandle('hoja.json')).getFile();
           const data = JSON.parse(await file.text()) as Partial<SheetData>;
           loaded.push({
-            name,
+            name: typeof data.name === 'string' && data.name.trim() ? data.name : name,
             details: typeof data.details === 'string' ? data.details : '',
             cells: data.cells ?? {},
             extraTexts: data.extraTexts ?? {},
@@ -393,10 +431,15 @@ export class AppComponent {
             rowHeights: data.rowHeights ?? {}
           });
         } catch {
-          loaded.push({ name, cells: {}, extraTexts: {}, formats: {}, merges: {}, columnWidths: {}, rowHeights: {} });
+          if (isLegacySheetFolder) loaded.push({ name, cells: {}, extraTexts: {}, formats: {}, merges: {}, columnWidths: {}, rowHeights: {} });
         }
       }
-      loaded.sort((a, b) => Number(a.name.match(/\d+/)?.[0]) - Number(b.name.match(/\d+/)?.[0]));
+      loaded.sort((a, b) => {
+        const aNumber = a.name.match(/^Hoja\s+(\d+)$/i)?.[1];
+        const bNumber = b.name.match(/^Hoja\s+(\d+)$/i)?.[1];
+        if (aNumber && bNumber) return Number(aNumber) - Number(bNumber);
+        return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+      });
       if (!loaded.length) loaded.push({ name: 'Hoja 1', cells: {}, extraTexts: {}, formats: {}, merges: {}, columnWidths: {}, rowHeights: {} });
       this.sheets.set(loaded);
       let savedSheetIndex = 0;

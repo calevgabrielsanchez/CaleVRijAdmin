@@ -8,7 +8,16 @@
     <button type="button" class="align-tool" (click)="vm.formatSelection({align: 'center'})" title="Centrar texto">↔</button>
     <button type="button" class="align-tool" (click)="vm.formatSelection({align: 'right'})" title="Alinear a la derecha">⇥</button>
     <button type="button" class="text-plus-tool" title="Editar información extra de la celda" aria-label="Editar información extra de la celda" (click)="vm.openTextPlus()">T+</button>
-    <label class="selected-cell-editor">Texto de la celda seleccionada <textarea rows="1" aria-label="Texto de la celda seleccionada" [value]="vm.selectedCellText()" (input)="vm.updateSelectedCellText($event)"></textarea></label>
+    <div class="cell-editor-controls">
+      <label class="selected-cell-editor">Texto<textarea rows="1" aria-label="Texto de la celda seleccionada" [value]="vm.selectedCellText()" (input)="vm.updateSelectedCellText($event)" (keydown.enter)="handleCellEditorEnter($event)"></textarea></label>
+      <button type="button" class="cell-navigation-toggle" [class.horizontal]="cellNavigationMode === 'horizontal'" [attr.aria-pressed]="cellNavigationMode === 'horizontal'" [attr.aria-label]="'Navegación con Enter: ' + (cellNavigationMode === 'vertical' ? 'vertical' : 'horizontal')" [title]="'Navegación con Enter: ' + (cellNavigationMode === 'vertical' ? 'Vertical' : 'Horizontal')" (click)="toggleCellNavigationMode()">
+        @if (cellNavigationMode === 'vertical') {
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M7 8l5-5 5 5M7 16l5 5 5-5"/></svg>
+        } @else {
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h18M8 7l-5 5 5 5M16 7l5 5-5 5"/></svg>
+        }
+      </button>
+    </div>
   </div>
   <div class="sheet-grid-wrap">
     <table class="sheet-grid"><thead><tr><th class="corner-cell"></th>@for (column of vm.columns; track column; let colIndex = $index) { <th scope="col" [style.width.px]="vm.columnWidth(colIndex)" [style.min-width.px]="vm.columnWidth(colIndex)">{{ column }}<span class="column-resize-handle" title="Arrastra para cambiar el ancho de la columna" (pointerdown)="vm.startResize('column', colIndex, $event)"></span></th> }</tr></thead>

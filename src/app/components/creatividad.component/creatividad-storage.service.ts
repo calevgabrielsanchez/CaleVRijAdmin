@@ -20,7 +20,8 @@ export class CreatividadStorageService {
       return {
         creatividad: Array.isArray(parsed.creatividad) ? parsed.creatividad : [],
         memorias: Array.isArray(parsed.memorias) ? parsed.memorias : [],
-        dibujos: Array.isArray(parsed.dibujos) ? parsed.dibujos : []
+        dibujos: Array.isArray(parsed.dibujos) ? parsed.dibujos : [],
+        borradorCreatividad: typeof parsed.borradorCreatividad === 'string' ? parsed.borradorCreatividad : ''
       };
     } catch (error) {
       if ((error as DOMException)?.name === 'NotFoundError') return this.emptyData();
