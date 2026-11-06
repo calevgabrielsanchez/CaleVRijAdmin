@@ -34,8 +34,7 @@ export interface SpreadsheetViewModel {
   mergeSelection: () => void;
   unmergeSelection: () => void;
   formatSelection: (change: Partial<CellFormat>) => void;
-  selectCell: (row: number, col: number, event: MouseEvent) => void;
-  updateCell: (row: number, col: number, event: Event) => void;
+  selectCell: (row: number, col: number, event: { shiftKey: boolean }) => void;
   updateSelectedCellText: (event: Event) => void;
   openTextPlus: () => void;
   selectSheet: (index: number) => void;
@@ -59,6 +58,13 @@ export class SpreadsheetSectionComponent {
   sheetNameDraft = '';
   sheetDetailsDraft = '';
   sheetPropertiesError = '';
+  private holdTimer: ReturnType<typeof setTimeout> | null = null;
+  private activeHoldPointer: number | null = null;
+  private activePointerCell: [number, number] | null = null;
+  private longPressActive = false;
+  private draggedSelection = false;
+  private rangeSelectionArmed = false;
+  private suppressNextClick = false;
 
   openSheetProperties(): void {
     const sheet = this.vm.sheets[this.vm.currentSheetIndex];
@@ -87,6 +93,48 @@ export class SpreadsheetSectionComponent {
     this.sheetMenuOpen = false;
   }
 
+  startCellHold(row: number, col: number, event: PointerEvent): void {
+    if (event.pointerType === 'mouse' || event.button !== 0) return;
+    this.clearHoldTimer();
+    this.activeHoldPointer = event.pointerId;
+    this.activePointerCell = [row, col];
+    this.longPressActive = false;
+    this.draggedSelection = false;
+    this.holdTimer = setTimeout(() => {
+      this.holdTimer = null;
+      this.longPressActive = true;
+      this.rangeSelectionArmed = true;
+      this.suppressNextClick = true;
+      this.vm.selectCell(row, col, { shiftKey: false });
+    }, 500);
+  }
+
+  extendHeldSelection(row: number, col: number, event: PointerEvent): void {
+    if (!this.longPressActive || event.pointerId !== this.activeHoldPointer) return;
+    if (this.activePointerCell?.[0] === row && this.activePointerCell[1] === col) return;
+    this.activePointerCell = [row, col];
+    this.draggedSelection = true;
+    this.vm.selectCell(row, col, { shiftKey: true });
+  }
+
+  selectCell(row: number, col: number, event: MouseEvent): void {
+    if (this.suppressNextClick) {
+      this.suppressNextClick = false;
+      return;
+    }
+    if (this.rangeSelectionArmed) {
+      this.vm.selectCell(row, col, { shiftKey: true });
+      this.rangeSelectionArmed = false;
+      return;
+    }
+    this.vm.selectCell(row, col, event);
+  }
+
+  private clearHoldTimer(): void {
+    if (this.holdTimer) clearTimeout(this.holdTimer);
+    this.holdTimer = null;
+  }
+
   @HostListener('document:click', ['$event'])
   closeSheetMenuOutside(event: MouseEvent): void {
     const target = event.target as HTMLElement | null;
@@ -94,8 +142,35 @@ export class SpreadsheetSectionComponent {
   }
 
   @HostListener('document:pointermove', ['$event'])
-  onPointerMove(event: PointerEvent): void { this.vm?.resizeDimension(event); }
+  onPointerMove(event: PointerEvent): void {
+    this.vm?.resizeDimension(event);
+    if (!this.longPressActive || event.pointerId !== this.activeHoldPointer) return;
+    const cell = document.elementFromPoint(event.clientX, event.clientY)
+      ?.closest<HTMLElement>('.sheet-grid td[data-row][data-col]');
+    if (cell) {
+      this.extendHeldSelection(Number(cell.dataset['row']), Number(cell.dataset['col']), event);
+    }
+  }
 
   @HostListener('document:pointerup')
-  onPointerUp(): void { this.vm?.stopResize(); }
+  onPointerUp(): void {
+    this.vm?.stopResize();
+    this.clearHoldTimer();
+    const shouldClearClickSuppression = this.suppressNextClick;
+    if (this.longPressActive && this.draggedSelection) this.rangeSelectionArmed = false;
+    this.activeHoldPointer = null;
+    this.activePointerCell = null;
+    this.longPressActive = false;
+    if (shouldClearClickSuppression) setTimeout(() => { this.suppressNextClick = false; });
+  }
+
+  @HostListener('document:pointercancel')
+  onPointerCancel(): void {
+    this.clearHoldTimer();
+    this.suppressNextClick = false;
+    this.activeHoldPointer = null;
+    this.activePointerCell = null;
+    this.longPressActive = false;
+    this.draggedSelection = false;
+  }
 }

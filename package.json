@@ -19,6 +19,7 @@
     "@angular/core": "^22.1.5",
     "@angular/forms": "22.2.3",
     "@angular/platform-browser": "^22.0.0",
+    "@calevrij/admin-android-directory-access": "file:plugins/android-directory-access",
     "@capacitor/android": "^8.0.0",
     "@capacitor/core": "^8.0.0",
     "@capacitor/ios": "^8.0.0",

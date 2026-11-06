@@ -1,0 +1,26 @@
+apply plugin: 'com.android.library'
+
+android {
+    namespace 'com.calevrij.admin.directoryaccess'
+    compileSdk rootProject.ext.compileSdkVersion
+
+    defaultConfig {
+        minSdkVersion rootProject.ext.minSdkVersion
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+}
+
+ext {
+    androidxActivityVersion = project.hasProperty('androidxActivityVersion') ? rootProject.ext.androidxActivityVersion : '1.11.0'
+    androidxDocumentFileVersion = project.hasProperty('androidxDocumentFileVersion') ? rootProject.ext.androidxDocumentFileVersion : '1.0.1'
+}
+
+dependencies {
+    implementation project(':capacitor-android')
+    implementation "androidx.activity:activity:$androidxActivityVersion"
+    implementation "androidx.documentfile:documentfile:$androidxDocumentFileVersion"
+}

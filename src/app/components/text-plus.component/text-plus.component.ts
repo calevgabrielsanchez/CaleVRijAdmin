@@ -1,4 +1,4 @@
-import { Component, ElementRef, EventEmitter, HostListener, Input, OnInit, Output, model } from '@angular/core';
+import { Component, ElementRef, EventEmitter, HostListener, Input, OnInit, Output, ViewChild, model } from '@angular/core';
 
 @Component({
   selector: 'app-text-plus',
@@ -7,6 +7,7 @@ import { Component, ElementRef, EventEmitter, HostListener, Input, OnInit, Outpu
   styleUrl: './text-plus.component.css'
 })
 export class TextPlusComponent implements OnInit {
+  @ViewChild('editor') private editor?: ElementRef<HTMLTextAreaElement>;
   @Input() bloqueaBackspace = true;
   readonly textoContenido = model<string>('');
   textoArea = '';
@@ -40,6 +41,43 @@ export class TextPlusComponent implements OnInit {
   guardarYAceptar(): void {
     this.textoContenido.set(this.textoArea);
     this.aceptar.emit();
+  }
+
+  insertarPrefijo(prefijo: string): void {
+    const start = this.editor?.nativeElement.selectionStart ?? this.textoArea.length;
+    this.textoArea = this.textoArea.slice(0, start) + prefijo + this.textoArea.slice(start);
+    this.actualizarVistaPergamino();
+    this.restaurarCursor(start + prefijo.length);
+  }
+
+  envolverTexto(prefijo: string, sufijo: string): void {
+    const editor = this.editor?.nativeElement;
+    const start = editor?.selectionStart ?? this.textoArea.length;
+    const end = editor?.selectionEnd ?? start;
+    const seleccionado = this.textoArea.slice(start, end);
+    this.textoArea = this.textoArea.slice(0, start) + prefijo + seleccionado + sufijo + this.textoArea.slice(end);
+    this.actualizarVistaPergamino();
+    this.restaurarCursor(start + prefijo.length + seleccionado.length);
+  }
+
+  insertarTabla(): void {
+    const editor = this.editor?.nativeElement;
+    const start = editor?.selectionStart ?? this.textoArea.length;
+    const end = editor?.selectionEnd ?? start;
+    const apertura = '-/head,row:\n';
+    const cierre = '\n:\n';
+    this.textoArea = this.textoArea.slice(0, start) + apertura + cierre + this.textoArea.slice(end);
+    this.actualizarVistaPergamino();
+    this.restaurarCursor(start + apertura.length);
+  }
+
+  private restaurarCursor(position: number): void {
+    setTimeout(() => {
+      const editor = this.editor?.nativeElement;
+      if (!editor) return;
+      editor.focus();
+      editor.setSelectionRange(position, position);
+    });
   }
 
   private escaparHtml(value: string): string {

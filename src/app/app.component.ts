@@ -84,7 +84,6 @@ export class AppComponent {
     unmergeSelection: () => this.unmergeSelection(),
     formatSelection: change => this.formatSelection(change),
     selectCell: (row, col, event) => this.selectCell(row, col, event),
-    updateCell: (row, col, event) => this.updateCell(row, col, event),
     updateSelectedCellText: event => this.updateSelectedCellText(event),
     openTextPlus: () => this.openTextPlus(),
     selectSheet: index => this.selectSheet(index),
@@ -216,14 +215,9 @@ export class AppComponent {
     return row >= Math.min(ar, br) && row <= Math.max(ar, br) && col >= Math.min(ac, bc) && col <= Math.max(ac, bc);
   }
 
-  selectCell(row: number, col: number, event: MouseEvent): void {
+  selectCell(row: number, col: number, event: { shiftKey: boolean }): void {
     if (event.shiftKey) this.selectionEnd.set([row, col]);
     else { this.selectionAnchor.set([row, col]); this.selectionEnd.set([row, col]); }
-  }
-
-  updateCell(row: number, col: number, event: Event): void {
-    const value = (event.target as HTMLInputElement).value;
-    this.updateCurrentSheet(sheet => { sheet.cells[this.cellKey(row, col)] = value; });
   }
 
   selectedCellText(): string {
@@ -264,10 +258,36 @@ export class AppComponent {
 
   mergeSelection(): void {
     const [ar, ac] = this.selectionAnchor(); const [br, bc] = this.selectionEnd();
-    const startRow = Math.min(ar, br), endRow = Math.max(ar, br), startCol = Math.min(ac, bc), endCol = Math.max(ac, bc);
+    let startRow = Math.min(ar, br), endRow = Math.max(ar, br);
+    let startCol = Math.min(ac, bc), endCol = Math.max(ac, bc);
     if (startRow === endRow && startCol === endCol) return;
-    const key = this.cellKey(startRow, startCol);
-    this.updateCurrentSheet(sheet => { sheet.merges[key] = { endRow, endCol }; });
+
+    this.updateCurrentSheet(sheet => {
+      let expanded: boolean;
+      do {
+        expanded = false;
+        for (const [key, range] of Object.entries(sheet.merges)) {
+          const [mergeStartRow, mergeStartCol] = key.split(':').map(Number);
+          const intersects = startRow <= range.endRow && endRow >= mergeStartRow
+            && startCol <= range.endCol && endCol >= mergeStartCol;
+          if (!intersects) continue;
+
+          const nextStartRow = Math.min(startRow, mergeStartRow);
+          const nextEndRow = Math.max(endRow, range.endRow);
+          const nextStartCol = Math.min(startCol, mergeStartCol);
+          const nextEndCol = Math.max(endCol, range.endCol);
+          expanded ||= nextStartRow !== startRow || nextEndRow !== endRow
+            || nextStartCol !== startCol || nextEndCol !== endCol;
+          startRow = nextStartRow;
+          endRow = nextEndRow;
+          startCol = nextStartCol;
+          endCol = nextEndCol;
+          delete sheet.merges[key];
+        }
+      } while (expanded);
+
+      sheet.merges[this.cellKey(startRow, startCol)] = { endRow, endCol };
+    });
   }
 
   unmergeSelection(): void {
@@ -290,7 +310,8 @@ export class AppComponent {
   isCoveredCell(row: number, col: number): boolean {
     for (const [key, range] of Object.entries(this.currentSheet()?.merges ?? {})) {
       const [startRow, startCol] = key.split(':').map(Number);
-      if ((row > startRow || col > startCol) && row >= startRow && row <= range.endRow && col >= startCol && col <= range.endCol) return true;
+      if (row >= startRow && row <= range.endRow && col >= startCol && col <= range.endCol
+        && (row !== startRow || col !== startCol)) return true;
     }
     return false;
   }

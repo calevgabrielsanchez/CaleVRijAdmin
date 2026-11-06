@@ -1,0 +1,23 @@
+{
+  "name": "@calevrij/admin-android-directory-access",
+  "version": "1.0.0",
+  "private": true,
+  "main": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepare": "npm run build"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.0.0"
+  },
+  "files": [
+    "android",
+    "dist/"
+  ],
+  "capacitor": {
+    "android": {
+      "src": "android"
+    }
+  }
+}

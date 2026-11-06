@@ -1,4 +1,6 @@
 import { Component, ElementRef, EventEmitter, Input, OnChanges, Output, SimpleChanges, ViewChild, signal } from '@angular/core';
+import { Capacitor } from '@capacitor/core';
+import { AndroidDirectoryAccess } from '@calevrij/admin-android-directory-access';
 
 export interface ProjectFileHandle {
   kind: 'file';
@@ -15,6 +17,80 @@ export interface ProjectDirectoryHandle {
   removeEntry(name: string, options?: { recursive?: boolean }): Promise<void>;
   queryPermission(options: { mode: 'readwrite' }): Promise<PermissionState>;
   requestPermission(options: { mode: 'readwrite' }): Promise<PermissionState>;
+}
+
+class AndroidProjectFileHandle implements ProjectFileHandle {
+  readonly kind = 'file' as const;
+
+  constructor(private readonly uri: string, private readonly path: string) {}
+
+  async getFile(): Promise<File> {
+    const result = await AndroidDirectoryAccess.readFile({ uri: this.uri, path: this.path });
+    const binary = atob(result.data);
+    const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
+    return new File([bytes], result.name, { type: result.mimeType, lastModified: result.lastModified });
+  }
+
+  async createWritable(): Promise<{ write(data: string | Blob): Promise<void>; close(): Promise<void> }> {
+    let content: string | Blob = '';
+    return {
+      write: async data => { content = data; },
+      close: async () => {
+        const blob = typeof content === 'string' ? new Blob([content]) : content;
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        let binary = '';
+        for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+          binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+        }
+        await AndroidDirectoryAccess.writeFile({
+          uri: this.uri,
+          path: this.path,
+          data: btoa(binary),
+          mimeType: blob.type || 'application/octet-stream'
+        });
+      }
+    };
+  }
+}
+
+class AndroidProjectDirectoryHandle implements ProjectDirectoryHandle {
+  readonly kind = 'directory' as const;
+
+  constructor(private readonly uri: string, private readonly path: string, readonly name: string) {}
+
+  async *entries(): AsyncIterable<[string, ProjectDirectoryHandle | ProjectFileHandle]> {
+    const { entries } = await AndroidDirectoryAccess.listDirectory({ uri: this.uri, path: this.path });
+    for (const entry of entries) {
+      const path = this.path ? `${this.path}/${entry.name}` : entry.name;
+      const handle = entry.kind === 'directory'
+        ? new AndroidProjectDirectoryHandle(this.uri, path, entry.name)
+        : new AndroidProjectFileHandle(this.uri, path);
+      yield [entry.name, handle];
+    }
+  }
+
+  async getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<ProjectDirectoryHandle> {
+    const path = this.path ? `${this.path}/${name}` : name;
+    const result = await AndroidDirectoryAccess.getDirectory({ uri: this.uri, path, create: options?.create ?? false });
+    return new AndroidProjectDirectoryHandle(this.uri, path, result.name);
+  }
+
+  async getFileHandle(name: string, options?: { create?: boolean }): Promise<ProjectFileHandle> {
+    if (!options?.create) {
+      const { entries } = await AndroidDirectoryAccess.listDirectory({ uri: this.uri, path: this.path });
+      if (!entries.some(entry => entry.name === name && entry.kind === 'file')) {
+        throw new DOMException(`File not found: ${name}`, 'NotFoundError');
+      }
+    }
+    return new AndroidProjectFileHandle(this.uri, this.path ? `${this.path}/${name}` : name);
+  }
+
+  async removeEntry(name: string): Promise<void> {
+    await AndroidDirectoryAccess.deleteEntry({ uri: this.uri, path: this.path ? `${this.path}/${name}` : name });
+  }
+
+  async queryPermission(): Promise<PermissionState> { return 'granted'; }
+  async requestPermission(): Promise<PermissionState> { return 'granted'; }
 }
 
 interface DirectoryPickerWindow extends Window {
@@ -115,6 +191,19 @@ export class ProjectLibraryManagerComponent implements OnChanges {
   }
 
   async selectRoot(): Promise<void> {
+    if (Capacitor.getPlatform() === 'android') {
+      try {
+        const selected = await AndroidDirectoryAccess.pickDirectory();
+        await this.activateRoot(new AndroidProjectDirectoryHandle(selected.uri, '', selected.name));
+        this.statusMessage.set('Carpeta raíz guardada con acceso de lectura y escritura.');
+      } catch (error) {
+        if ((error as { code?: string })?.code !== 'USER_CANCELLED') {
+          this.statusMessage.set('No se pudo abrir o guardar la carpeta seleccionada.');
+        }
+      }
+      return;
+    }
+
     const picker = (window as DirectoryPickerWindow).showDirectoryPicker;
     if (!picker) {
       this.openRootFilePicker();

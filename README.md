@@ -31,3 +31,9 @@ Para iOS, ejecuta `npx cap add ios` en macOS. Cambia primero `appId` y `appName`
 - **Salida de compilación:** Angular genera `dist/plantilla-clvj/browser`, configurada como `webDir` de Capacitor.
 
 Cada aplicación nueva puede comenzar copiando esta carpeta y modificando su configuración, contenido y funciones.
+
+
+## Building
+
+To build the project run:## Compilar a capacitor y subir ak celular
+ng build --configuration production && npx cap sync android && npx cap copy android && export ANDROID_HOME=$HOME/Android/Sdk && export ANDROID_SDK_ROOT=$HOME/Android/Sdk && npx cap run android
