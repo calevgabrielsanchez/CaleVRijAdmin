@@ -5,11 +5,8 @@
     <button class="action-button" type="button" (click)="selectRoot()">
       {{ rootPath() ? 'Cambiar carpeta raíz' : 'Seleccionar carpeta raíz' }}
     </button>
-    <button class="action-button secondary-action" type="button" (click)="selectBrowserRoot()">Usar almacenamiento del navegador</button>
     <input #rootPicker class="visually-hidden" type="file" webkitdirectory directory multiple aria-label="Seleccionar carpeta raíz" (change)="selectRootFiles($event)">
-    <input #importPicker class="visually-hidden" type="file" webkitdirectory directory multiple aria-label="Importar carpeta al almacenamiento del navegador" (change)="importFilesToBrowserStorage($event)">
     @if (fallbackMode()) {
-      <button class="action-button secondary-action" type="button" (click)="importPicker.click()">Importar al almacenamiento del navegador</button>
       <div class="library-tree fallback-tree" aria-label="Contenido de carpeta raíz"><div class="tree-root"><span aria-hidden="true">📁</span><strong>{{ rootPath() }}</strong><small>{{ fallbackEntries().length }} elementos · solo lectura</small></div>@for (entry of fallbackEntries(); track entry.path) { <div class="fallback-tree-row" [style.padding-left.px]="entry.depth * 18 + 8"><span aria-hidden="true">{{ entry.kind === 'directory' ? '📁' : '📄' }}</span><span class="fallback-entry-name">{{ entry.name }}</span>@if (entry.kind === 'file') { <small>{{ entry.size }} bytes</small> }</div> }</div>
     } @else if (rootPath()) {
       <div class="library-tree" aria-label="Árbol de bibliotecas">

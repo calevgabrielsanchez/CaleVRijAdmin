@@ -22,7 +22,7 @@
             <div class="drive-heading"><span class="drive-icon" aria-hidden="true">⇄</span><div><h3>Sincronización directa entre dispositivos</h3><p>Conecta dos aplicaciones CaleVRijAdmin por P2P con WebRTC. Los archivos viajan directamente de un dispositivo al otro, sin pasar por Google Drive ni por un servidor de archivos.</p></div></div>
             <p class="settings-help">Ambos dispositivos deben tener abierta esta pantalla y la carpeta raíz de su biblioteca seleccionada. Los códigos de conexión se comparten manualmente (por mensaje, correo o USB) y solo sirven para esta sesión.</p>
             <p class="settings-help">La sincronización copia archivos nuevos y actualiza los que tengan una fecha de modificación más reciente. No elimina archivos. Si la red bloquea WebRTC, prueba con ambos dispositivos en la misma red Wi-Fi.</p>
-            <p class="settings-help">La app guarda un archivo oculto <code>.calevri-sync.json</code> en la raíz para recordar las fechas de los archivos recibidos y no volver a descargarlos.</p>
+            <p class="settings-help">La app guarda el estado de sincronización en <code>.calevri/sync.json</code> para recordar las fechas de los archivos recibidos y no volver a descargarlos.</p>
             <p class="root-status">{{ libraryRoot ? 'Biblioteca principal lista: ' + libraryRoot.name : 'Sin biblioteca principal. Abre el panel de biblioteca con Menu y selecciona la carpeta raíz.' }}</p>
             @if (formMessage) { <p class="settings-alert" role="alert">{{ formMessage }}</p> }
           </article>
@@ -41,14 +41,13 @@
                 <p>{{ playerLibrary() ? 'Sus archivos se envían y reciben junto con la biblioteca principal.' : 'Elige dónde guardar la biblioteca del reproductor en este dispositivo.' }}</p>
                 <div class="library-actions">
                   <button type="button" [disabled]="sync.syncing()" (click)="choosePlayerLibrary()">Elegir carpeta</button>
-                  <button type="button" class="secondary-button" [disabled]="sync.syncing()" (click)="useBrowserPlayerLibrary()">Usar almacenamiento del navegador</button>
                   @if (playerLibrary()) {
                     <button type="button" class="secondary-button" [disabled]="sync.syncing()" (click)="rescanPlayerLibrary()">Volver a leer</button>
                   }
                 </div>
               </div>
             </div>
-            <p class="settings-help">En móvil o navegador, elige «Usar almacenamiento del navegador» si el dispositivo no permite seleccionar una carpeta real. La biblioteca quedará dentro de la app y se sincronizará igual que en escritorio.</p>
+            <p class="settings-help">Elige una carpeta real del dispositivo. La configuración y los datos propios de la app se guardan en <code>.calevri/</code> dentro de la carpeta principal.</p>
             @if (config.message()) { <p class="settings-help">{{ config.message() }}</p> }
             @if (playerMessage()) { <p class="root-status">{{ playerMessage() }}</p> }
           </article>

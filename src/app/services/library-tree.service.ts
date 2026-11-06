@@ -56,7 +56,6 @@ export class LibraryTreeService {
   readonly libraries = signal<LibraryRecord[]>([]);
   readonly nodes = signal<IndexedLibraryNode[]>([]);
   readonly progress = signal<LibraryScanProgress | null>(null);
-  private dbPromise?: Promise<IDBDatabase>;
   private initializePromise?: Promise<void>;
 
   constructor() {
@@ -69,16 +68,8 @@ export class LibraryTreeService {
   initialize(): Promise<void> {
     if (!this.initializePromise) {
       this.initializePromise = (async () => {
-        const db = await this.openDb();
-        const [libraries, nodes] = await Promise.all([
-          this.request<LibraryRecord[]>(db.transaction('libraries').objectStore('libraries').getAll()),
-          this.request<IndexedLibraryNode[]>(db.transaction('nodes').objectStore('nodes').getAll())
-        ]);
-        this.libraries.set(libraries);
-        this.nodes.set(nodes.sort((a, b) => a.libraryId.localeCompare(b.libraryId) || a.path.localeCompare(b.path, undefined, { numeric: true })));
         await this.config.whenReady();
         this.mergeRegistry(this.config.playerLibraries());
-        this.persistRegistry();
       })();
     }
     return this.initializePromise;
@@ -93,27 +84,11 @@ export class LibraryTreeService {
       id: crypto.randomUUID(), name: name?.trim() || root.name, root,
       createdAt: new Date().toISOString(), lastScan: '', folderCount: 0, fileCount: 0, totalBytes: 0
     };
-    await this.putRecord(record);
     this.libraries.update(items => [...items, record]);
     await this.scan(record);
     const saved = this.libraries().find(item => item.id === record.id) ?? record;
     this.persistRegistry();
     return saved;
-  }
-
-  async createBrowserStorageLibrary(): Promise<LibraryRecord> {
-    const storage = (navigator as Navigator & { storage?: { getDirectory?: () => Promise<LibraryDirectoryHandle> } }).storage;
-    if (!storage?.getDirectory) {
-      throw new Error('Este navegador no permite crear una biblioteca en su almacenamiento interno.');
-    }
-    const existing = this.libraries().find(library => library.name === 'Reproductor (navegador)');
-    if (existing) {
-      await this.rescan(existing);
-      return existing;
-    }
-    const opfs = await storage.getDirectory();
-    const root = await opfs.getDirectoryHandle('CaleVRiJReproductor', { create: true }) as unknown as LibraryDirectoryHandle;
-    return this.addLibraryFromHandle(root, 'Reproductor (navegador)');
   }
 
   exportRegistry(): PlayerLibraryConfig[] {
@@ -163,18 +138,6 @@ export class LibraryTreeService {
   }
 
   async removeLibrary(record: LibraryRecord): Promise<void> {
-    const db = await this.openDb();
-    await this.transaction(db, ['libraries', 'nodes'], 'readwrite', tx => {
-      tx.objectStore('libraries').delete(record.id);
-      const store = tx.objectStore('nodes');
-      const request = store.openCursor();
-      request.onsuccess = () => {
-        const cursor = request.result;
-        if (!cursor) return;
-        if ((cursor.value as IndexedLibraryNode).libraryId === record.id) cursor.delete();
-        cursor.continue();
-      };
-    });
     this.libraries.update(items => items.filter(item => item.id !== record.id));
     this.nodes.update(items => items.filter(item => item.libraryId !== record.id));
     const remaining = this.config.playerLibraries().filter(item => item.id !== record.id && item.name !== record.name);
@@ -186,7 +149,6 @@ export class LibraryTreeService {
 
   async setCover(record: LibraryRecord, cover: Blob): Promise<void> {
     const updated = { ...record, cover };
-    await this.putRecord(updated);
     this.libraries.update(items => items.map(item => item.id === record.id ? updated : item));
   }
 
@@ -261,7 +223,7 @@ export class LibraryTreeService {
       while (queueIndex < queue.length) {
         const current = queue[queueIndex++];
         for await (const [name, entry] of current.directory.entries()) {
-          if (name === '.calevri' || name === '.calevri-sync.json') continue;
+          if (name === '.calevri') continue;
           const path = current.parentPath ? `${current.parentPath}/${name}` : name;
           if (entry.kind === 'directory') {
             folderCount++;
@@ -281,22 +243,7 @@ export class LibraryTreeService {
           }
         }
       }
-      const db = await this.openDb();
-      await this.transaction(db, ['nodes'], 'readwrite', tx => {
-        const store = tx.objectStore('nodes');
-        const request = store.openCursor();
-        request.onsuccess = () => {
-          const cursor = request.result;
-          if (!cursor) {
-            for (const node of nodes) store.put(node);
-            return;
-          }
-          if ((cursor.value as IndexedLibraryNode).libraryId === record.id) cursor.delete();
-          cursor.continue();
-        };
-      });
       const updated: LibraryRecord = { ...record, lastScan: new Date().toISOString(), folderCount, fileCount, totalBytes };
-      await this.putRecord(updated);
       this.libraries.update(items => items.map(item => item.id === record.id ? updated : item));
       this.nodes.update(items => [...items.filter(item => item.libraryId !== record.id), ...nodes].sort((a, b) => a.libraryId.localeCompare(b.libraryId) || a.path.localeCompare(b.path, undefined, { numeric: true })));
       this.progress.set({ libraryId: record.id, scanned, percent: 100, running: false });
@@ -328,40 +275,4 @@ export class LibraryTreeService {
     return (await directory.getFileHandle(fileName)).getFile();
   }
 
-  private async putRecord(record: LibraryRecord): Promise<void> {
-    const db = await this.openDb();
-    await this.transaction(db, ['libraries'], 'readwrite', tx => tx.objectStore('libraries').put(record));
-  }
-
-  private openDb(): Promise<IDBDatabase> {
-    if (this.dbPromise) return this.dbPromise;
-    this.dbPromise = new Promise((resolve, reject) => {
-      const request = indexedDB.open('calevri-library-tree', 1);
-      request.onupgradeneeded = () => {
-        const db = request.result;
-        if (!db.objectStoreNames.contains('libraries')) db.createObjectStore('libraries', { keyPath: 'id' });
-        if (!db.objectStoreNames.contains('nodes')) db.createObjectStore('nodes', { keyPath: ['libraryId', 'path'] });
-      };
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-    return this.dbPromise;
-  }
-
-  private request<T>(request: IDBRequest<T>): Promise<T> {
-    return new Promise((resolve, reject) => {
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  private transaction(db: IDBDatabase, stores: string[], mode: IDBTransactionMode, action: (tx: IDBTransaction) => void): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(stores, mode);
-      action(tx);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-      tx.onabort = () => reject(tx.error);
-    });
-  }
 }

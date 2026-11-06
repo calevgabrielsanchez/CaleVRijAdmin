@@ -44,12 +44,6 @@ const FILES: Record<keyof ConfigFileMap, string> = {
   playerLibraries: 'player-libraries.json',
   notes: 'notes.json'
 };
-const LOCAL_KEYS: Record<keyof ConfigFileMap, string> = {
-  config: 'calevri-config',
-  bookmarks: 'calevri-player-bookmarks',
-  playerLibraries: 'calevri-player-libraries',
-  notes: 'calevri-notes'
-};
 const README = [
   'Carpeta de configuración de CaleVRijAdmin.',
   '',
@@ -77,22 +71,21 @@ export class ConfigService {
   readonly message = signal('');
 
   private folder: ProjectDirectoryHandle | null = null;
-  private loaded = false;
   private loadPromise: Promise<void> | null = null;
   private writeQueue: Promise<void> = Promise.resolve();
   private saveTimers = new Map<keyof ConfigFileMap, ReturnType<typeof setTimeout>>();
 
-  constructor() {
-    this.hydrateFromLocalStorage();
-  }
+  constructor() {}
 
   async configure(root: ProjectDirectoryHandle | null): Promise<void> {
     this.root.set(root);
     this.folder = null;
-    this.loaded = false;
     this.loadPromise = null;
+    this.config.set(this.emptyConfig());
+    this.bookmarks.set({});
+    this.playerLibraries.set([]);
+    this.notes.set([]);
     if (!root) {
-      this.hydrateFromLocalStorage();
       this.ready.set(true);
       return;
     }
@@ -114,26 +107,22 @@ export class ConfigService {
 
   saveBookmarks(record: PlayerBookmarkRecord): void {
     this.bookmarks.set(record);
-    this.persistLocal('bookmarks', record);
     this.schedulePersist('bookmarks');
   }
 
   savePlayerLibraries(libraries: PlayerLibraryConfig[]): void {
     this.playerLibraries.set(libraries);
-    this.persistLocal('playerLibraries', libraries);
     this.schedulePersist('playerLibraries');
   }
 
   saveNotes(notes: AppNote[]): void {
     this.notes.set(notes);
-    this.persistLocal('notes', notes);
     this.schedulePersist('notes');
   }
 
   saveConfig(config: AppConfig): void {
     const next = { ...config, updatedAt: new Date().toISOString() };
     this.config.set(next);
-    this.persistLocal('config', next);
     this.schedulePersist('config');
   }
 
@@ -162,12 +151,6 @@ export class ConfigService {
     try {
       const folder = await root.getDirectoryHandle(CONFIG_FOLDER, { create: true });
       this.folder = folder;
-      await this.writeIfMissing(folder, 'config', this.config());
-      await this.writeIfMissing(folder, 'bookmarks', this.bookmarks());
-      await this.writeIfMissing(folder, 'playerLibraries', this.playerLibraries());
-      await this.writeIfMissing(folder, 'notes', this.notes());
-      await this.writeIfMissingText(folder, 'README.txt', README);
-
       const config = await this.readFile<AppConfig>(folder, 'config');
       const bookmarks = await this.readFile<PlayerBookmarkRecord>(folder, 'bookmarks');
       const playerLibraries = await this.readFile<PlayerLibraryConfig[]>(folder, 'playerLibraries');
@@ -185,27 +168,16 @@ export class ConfigService {
       }
       if (Array.isArray(notes)) this.notes.set(notes.filter(item => !!item && typeof item.id === 'string'));
 
-      this.persistLocal('config', this.config());
-      this.persistLocal('bookmarks', this.bookmarks());
-      this.persistLocal('playerLibraries', this.playerLibraries());
-      this.persistLocal('notes', this.notes());
+      await this.writeIfMissing(folder, 'config', this.config());
+      await this.writeIfMissing(folder, 'bookmarks', this.bookmarks());
+      await this.writeIfMissing(folder, 'playerLibraries', this.playerLibraries());
+      await this.writeIfMissing(folder, 'notes', this.notes());
+      await this.writeIfMissingText(folder, 'README.txt', README);
       this.message.set(`Configuración cargada desde ${CONFIG_FOLDER}/.`);
     } catch (error) {
-      this.message.set(`No se pudo leer la carpeta ${CONFIG_FOLDER}. Se usará el almacenamiento del navegador.`);
-      this.hydrateFromLocalStorage();
+      this.message.set(`No se pudo leer o escribir en ${CONFIG_FOLDER}/. No se guardaron cambios en el navegador.`);
       console.warn('No se pudo leer la carpeta de configuración.', error);
     }
-  }
-
-  private hydrateFromLocalStorage(): void {
-    this.config.set(this.readLocal<AppConfig>('config') ?? this.emptyConfig());
-    const bookmarks = this.readLocal<PlayerBookmarkRecord>('bookmarks');
-    this.bookmarks.set(bookmarks && this.isBookmarkRecord(bookmarks) ? bookmarks : {});
-    const libraries = this.readLocal<PlayerLibraryConfig[]>('playerLibraries');
-    this.playerLibraries.set(Array.isArray(libraries) ? libraries : []);
-    const notes = this.readLocal<AppNote[]>('notes');
-    this.notes.set(Array.isArray(notes) ? notes : []);
-    this.loaded = true;
   }
 
   private schedulePersist(key: keyof ConfigFileMap): void {
@@ -225,7 +197,10 @@ export class ConfigService {
   private async persist(key: keyof ConfigFileMap): Promise<void> {
     if (!this.folder) {
       const root = this.root();
-      if (!root) return;
+      if (!root) {
+        this.message.set('Selecciona la carpeta raíz para guardar los cambios en .calevri/.');
+        return;
+      }
       try {
         this.folder = await root.getDirectoryHandle(CONFIG_FOLDER, { create: true });
       } catch {
@@ -277,23 +252,6 @@ export class ConfigService {
       const writer = await handle.createWritable();
       await writer.write(value);
       await writer.close();
-    }
-  }
-
-  private readLocal<T>(key: keyof ConfigFileMap): T | null {
-    try {
-      const raw = localStorage.getItem(LOCAL_KEYS[key]);
-      return raw ? JSON.parse(raw) as T : null;
-    } catch {
-      return null;
-    }
-  }
-
-  private persistLocal(key: keyof ConfigFileMap, value: unknown): void {
-    try {
-      localStorage.setItem(LOCAL_KEYS[key], JSON.stringify(value));
-    } catch {
-      // El almacenamiento local puede estar lleno o bloqueado.
     }
   }
 

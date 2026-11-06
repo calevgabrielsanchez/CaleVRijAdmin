@@ -98,7 +98,7 @@ export class P2PSyncService {
   private idleSent = false;
   private remoteIdle = false;
   private disposed = false;
-  private readonly metadataFileName = '.calevri-sync.json';
+  private readonly metadataFileName = '.calevri/sync.json';
 
   async createInvitation(roots: SyncRoot[]): Promise<void> {
     this.closeConnection();
@@ -745,7 +745,11 @@ export class P2PSyncService {
   private async loadMetadata(root: ProjectDirectoryHandle): Promise<void> {
     this.metadata = new Map<string, SyncMetadataEntry>();
     try {
-      const handle = await root.getFileHandle(this.metadataFileName);
+      const parts = this.metadataFileName.split('/');
+      const fileName = parts.pop()!;
+      let directory = root;
+      for (const part of parts) directory = await directory.getDirectoryHandle(part);
+      const handle = await directory.getFileHandle(fileName);
       const file = await handle.getFile();
       const parsed = JSON.parse(await file.text()) as { files?: Record<string, unknown> };
       if (parsed && parsed.files && typeof parsed.files === 'object') {
@@ -774,7 +778,11 @@ export class P2PSyncService {
     const main = this.roots.get('main');
     if (!main) return;
     try {
-      const handle = await main.root.getFileHandle(this.metadataFileName, { create: true });
+      const parts = this.metadataFileName.split('/');
+      const fileName = parts.pop()!;
+      let directory = main.root;
+      for (const part of parts) directory = await directory.getDirectoryHandle(part, { create: true });
+      const handle = await directory.getFileHandle(fileName, { create: true });
       const writer = await handle.createWritable();
       await writer.write(JSON.stringify({ files: Object.fromEntries(this.metadata) }));
       await writer.close();

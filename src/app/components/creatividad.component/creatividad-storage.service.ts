@@ -4,7 +4,7 @@ import { CreatividadData, EMPTY_CREATIVIDAD_DATA } from './creatividad.models';
 
 @Injectable({ providedIn: 'root' })
 export class CreatividadStorageService {
-  private readonly folderName = 'Creatividad';
+  private readonly folderName = '.calevri';
   private readonly fileName = 'creatividad.json';
 
   async load(root: ProjectDirectoryHandle): Promise<CreatividadData> {

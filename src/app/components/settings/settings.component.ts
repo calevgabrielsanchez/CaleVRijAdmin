@@ -108,16 +108,6 @@ export class SettingsComponent {
     }
   }
 
-  async useBrowserPlayerLibrary(): Promise<void> {
-    this.playerMessage.set('');
-    try {
-      const record = await this.libraryTree.createBrowserStorageLibrary();
-      this.playerMessage.set(`Biblioteca del reproductor creada en el almacenamiento del navegador: ${record.name}.`);
-    } catch (error) {
-      this.playerMessage.set(error instanceof Error ? error.message : 'No se pudo crear la biblioteca del reproductor en el navegador.');
-    }
-  }
-
   async rescanPlayerLibrary(): Promise<void> {
     const record = this.playerLibrary();
     if (!record) { this.playerMessage.set('Primero selecciona la carpeta de la biblioteca del reproductor.'); return; }

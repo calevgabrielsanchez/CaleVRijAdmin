@@ -68,7 +68,7 @@ export class ProjectLibraryManagerComponent implements OnChanges {
   readonly fallbackEntries = signal<FallbackNode[]>([]);
   readonly openMenuPath = signal<string | null>(null);
 
-  constructor() { void this.restoreRoot(); }
+  constructor() {}
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['active'] && !changes['active'].currentValue) this.closeNodeMenu();
@@ -117,8 +117,7 @@ export class ProjectLibraryManagerComponent implements OnChanges {
   async selectRoot(): Promise<void> {
     const picker = (window as DirectoryPickerWindow).showDirectoryPicker;
     if (!picker) {
-      this.statusMessage.set('Selecciona la carpeta raíz desde el selector del dispositivo.');
-      this.rootPicker?.nativeElement.click();
+      this.openRootFilePicker();
       return;
     }
     try {
@@ -132,53 +131,20 @@ export class ProjectLibraryManagerComponent implements OnChanges {
     }
   }
 
-  async selectBrowserRoot(): Promise<void> {
-    const storage = (navigator as Navigator & { storage?: { getDirectory?: () => Promise<ProjectDirectoryHandle> } }).storage;
-    if (!storage?.getDirectory) {
-      this.statusMessage.set('Este navegador no permite usar el almacenamiento interno. Usa el selector de carpeta.');
+  private openRootFilePicker(): void {
+    const input = this.rootPicker?.nativeElement;
+    if (!input) {
+      this.statusMessage.set('No se pudo abrir el selector de carpetas.');
       return;
     }
-    try {
-      const opfs = await storage.getDirectory();
-      const handle = await opfs.getDirectoryHandle('CaleVRiJBiblioteca', { create: true }) as unknown as ProjectDirectoryHandle;
-      await this.activateRoot(handle, 'Biblioteca (navegador)');
-      this.statusMessage.set('Biblioteca principal guardada en el almacenamiento del navegador. Puedes importar archivos existentes cuando quieras.');
-    } catch {
-      this.statusMessage.set('No se pudo crear la biblioteca en el almacenamiento del navegador.');
-    }
-  }
 
-  async importFilesToBrowserStorage(event: Event): Promise<void> {
-    const input = event.target as HTMLInputElement;
-    const files = Array.from(input.files ?? []);
-    input.value = '';
-    if (!files.length) return;
-    const storage = (navigator as Navigator & { storage?: { getDirectory?: () => Promise<ProjectDirectoryHandle> } }).storage;
-    if (!storage?.getDirectory) {
-      this.statusMessage.set('Este navegador no permite usar el almacenamiento interno.');
-      return;
-    }
+    this.statusMessage.set('Selecciona la carpeta raíz desde el selector del dispositivo.');
     try {
-      const opfs = await storage.getDirectory();
-      const root = await opfs.getDirectoryHandle('CaleVRiJBiblioteca', { create: true }) as unknown as ProjectDirectoryHandle;
-      let imported = 0;
-      for (const file of files) {
-        const parts = (file.webkitRelativePath || file.name).split('/').filter(Boolean).slice(1);
-        if (!parts.length) continue;
-        const fileName = parts.pop()!;
-        let directory = root;
-        for (const part of parts) directory = await directory.getDirectoryHandle(part, { create: true });
-        const handle = await directory.getFileHandle(fileName, { create: true });
-        const writer = await handle.createWritable();
-        await writer.write(file);
-        await writer.close();
-        imported++;
-        if (imported % 50 === 0) this.statusMessage.set(`Importando… ${imported} de ${files.length} archivos.`);
-      }
-      await this.activateRoot(root, 'Biblioteca (navegador)');
-      this.statusMessage.set(`Se importaron ${imported} archivos al almacenamiento del navegador.`);
+      if (typeof input.showPicker === 'function') input.showPicker();
+      else input.click();
     } catch {
-      this.statusMessage.set('No se pudieron importar los archivos al almacenamiento del navegador.');
+      // Algunos WebView no implementan showPicker; click conserva el gesto del usuario.
+      input.click();
     }
   }
 
@@ -189,8 +155,6 @@ export class ProjectLibraryManagerComponent implements OnChanges {
     this.fallbackEntries.set([]);
     this.rootHandleChange.emit(handle);
     this.bookSelected.emit(null);
-    await this.setSetting('root', handle);
-    await this.setSetting('lastBookPath', null);
     await this.refreshTree();
   }
 
@@ -230,7 +194,7 @@ export class ProjectLibraryManagerComponent implements OnChanges {
     this.fallbackEntries.set([...entries.values()].sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true })));
     this.rootHandleChange.emit(null);
     this.bookSelected.emit(null);
-    this.statusMessage.set('Carpeta cargada en modo lectura. Para crear o editar elementos, usa «Importar al almacenamiento del navegador» o un selector con permisos de escritura.');
+    this.statusMessage.set('Carpeta cargada en modo lectura. Para crear o editar elementos, selecciona una carpeta con permisos de escritura en un navegador compatible.');
   }
 
   openCreateDialog(level: ProjectNodeLevel, parent: ProjectDirectoryHandle): void {
@@ -315,23 +279,6 @@ export class ProjectLibraryManagerComponent implements OnChanges {
     this.imagePreviewUrl.set(url);
   }
 
-  private async restoreRoot(): Promise<void> {
-    try {
-      const handle = await this.getSetting<ProjectDirectoryHandle>('root');
-      if (!handle) return;
-      let permission: PermissionState = 'granted';
-      if (typeof handle.queryPermission === 'function') {
-        permission = await handle.queryPermission({ mode: 'readwrite' });
-        if (permission !== 'granted') permission = await handle.requestPermission({ mode: 'readwrite' });
-      }
-      if (permission !== 'granted') { this.statusMessage.set('Vuelve a seleccionar la carpeta raíz para conceder acceso.'); return; }
-      this.rootHandle.set(handle); this.rootPath.set(handle.name); this.fallbackMode.set(false); this.fallbackEntries.set([]); this.rootHandleChange.emit(handle); await this.refreshTree();
-      const lastPath = await this.getSetting<string[]>('lastBookPath');
-      const lastBook = lastPath ? this.findBookByPath(lastPath) : null;
-      if (lastBook) this.bookSelected.emit(lastBook);
-    } catch { /* IndexedDB o la API de archivos pueden no estar disponibles. */ }
-  }
-
   private async refreshTree(): Promise<void> {
     const root = this.rootHandle();
     if (root) this.libraries.set(await this.readNodes(root, 'biblioteca'));
@@ -341,20 +288,13 @@ export class ProjectLibraryManagerComponent implements OnChanges {
     const next: Record<ProjectNodeLevel, ProjectNodeLevel | null> = { biblioteca: 'estante', estante: 'tema', tema: 'libro', libro: null };
     const nodes: ProjectLibraryNode[] = [];
     for await (const [name, entry] of parent.entries()) {
-      if (name === '.calevri' || name === '.calevri-sync.json') continue;
+      if (name === '.calevri') continue;
       if (entry.kind !== 'directory') continue;
       const node: ProjectLibraryNode = { name, level, handle: entry, parent, path: [...path, name], children: [] };
       if (next[level]) node.children = await this.readNodes(entry, next[level]!, node.path);
       nodes.push(node);
     }
     return nodes.sort((a, b) => a.name.localeCompare(b.name));
-  }
-
-  private findBookByPath(path: string[]): ProjectLibraryNode | null {
-    let candidates = this.libraries();
-    let match: ProjectLibraryNode | undefined;
-    for (const name of path) { match = candidates.find(node => node.name === name); if (!match) return null; candidates = match.children; }
-    return match?.level === 'libro' ? match : null;
   }
 
   private async renameFolder(oldFolder: ProjectDirectoryHandle, parent: ProjectDirectoryHandle, newName: string): Promise<ProjectDirectoryHandle> {
@@ -370,29 +310,4 @@ export class ProjectLibraryManagerComponent implements OnChanges {
     }
   }
 
-  private async setSetting<T>(key: string, value: T): Promise<void> {
-    const db = await this.openDb();
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction('settings', 'readwrite'); tx.objectStore('settings').put(value, key);
-      tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error);
-    });
-    db.close();
-  }
-
-  private async getSetting<T>(key: string): Promise<T | null> {
-    const db = await this.openDb();
-    const result = await new Promise<T | null>((resolve, reject) => {
-      const request = db.transaction('settings').objectStore('settings').get(key);
-      request.onsuccess = () => resolve(request.result ?? null); request.onerror = () => reject(request.error);
-    });
-    db.close(); return result;
-  }
-
-  private openDb(): Promise<IDBDatabase> {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open('calevri-admin', 1);
-      request.onupgradeneeded = () => { if (!request.result.objectStoreNames.contains('settings')) request.result.createObjectStore('settings'); };
-      request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
-    });
-  }
 }

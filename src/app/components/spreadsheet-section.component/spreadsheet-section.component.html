@@ -33,7 +33,21 @@
         </div>
       }
     </div>
+    <button type="button" class="sheet-properties" aria-label="Propiedades de hoja" title="Propiedades de hoja" (click)="openSheetProperties()">⚙</button>
     <button type="button" class="sheet-add" aria-label="Agregar hoja" title="Agregar hoja" (click)="vm.addSheet()"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M7 12h10"/></svg></button>
     <button type="button" class="sheet-remove" aria-label="Eliminar hoja" title="Eliminar hoja" [disabled]="vm.sheets.length <= 1" (click)="vm.removeSheet()"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M7 12h10"/></svg></button>
   </div>
+  @if (sheetPropertiesOpen) {
+    <div class="sheet-properties-backdrop" (click)="$event.target === $event.currentTarget && (sheetPropertiesOpen = false)">
+      <section class="sheet-properties-dialog" role="dialog" aria-modal="true" aria-labelledby="sheet-properties-title">
+        <h2 id="sheet-properties-title">Propiedades de hoja</h2>
+        <label for="sheet-property-name">Nombre</label>
+        <input id="sheet-property-name" type="text" maxlength="80" [value]="sheetNameDraft" (input)="sheetNameDraft = $any($event.target).value">
+        <label for="sheet-property-details">Detalles</label>
+        <textarea id="sheet-property-details" rows="5" [value]="sheetDetailsDraft" (input)="sheetDetailsDraft = $any($event.target).value"></textarea>
+        @if (sheetPropertiesError) { <p class="sheet-properties-error" role="alert">{{ sheetPropertiesError }}</p> }
+        <div class="sheet-properties-actions"><button type="button" (click)="sheetPropertiesOpen = false">Cancelar</button><button type="button" class="save-properties" (click)="saveSheetProperties()">Guardar</button></div>
+      </section>
+    </div>
+  }
 </section>

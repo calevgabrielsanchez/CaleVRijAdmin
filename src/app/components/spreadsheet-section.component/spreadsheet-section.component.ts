@@ -3,6 +3,7 @@ import { Component, HostListener, Input } from '@angular/core';
 export interface CellFormat { background?: string; color?: string; align?: 'left' | 'center' | 'right' }
 export interface SheetData {
   name: string;
+  details?: string;
   cells: Record<string, string>;
   extraTexts: Record<string, string>;
   formats: Record<string, CellFormat>;
@@ -40,6 +41,7 @@ export interface SpreadsheetViewModel {
   selectSheet: (index: number) => void;
   addSheet: () => void;
   removeSheet: () => void;
+  updateSheetProperties: (name: string, details: string) => string | null;
   updateBackground: (event: Event) => void;
   updateTextColor: (event: Event) => void;
 }
@@ -53,6 +55,28 @@ export interface SpreadsheetViewModel {
 export class SpreadsheetSectionComponent {
   @Input({ required: true }) vm!: SpreadsheetViewModel;
   sheetMenuOpen = false;
+  sheetPropertiesOpen = false;
+  sheetNameDraft = '';
+  sheetDetailsDraft = '';
+  sheetPropertiesError = '';
+
+  openSheetProperties(): void {
+    const sheet = this.vm.sheets[this.vm.currentSheetIndex];
+    if (!sheet) return;
+    this.sheetNameDraft = sheet.name;
+    this.sheetDetailsDraft = sheet.details ?? '';
+    this.sheetPropertiesError = '';
+    this.sheetPropertiesOpen = true;
+  }
+
+  saveSheetProperties(): void {
+    const error = this.vm.updateSheetProperties(this.sheetNameDraft, this.sheetDetailsDraft);
+    if (error) {
+      this.sheetPropertiesError = error;
+      return;
+    }
+    this.sheetPropertiesOpen = false;
+  }
 
   toggleSheetMenu(): void {
     if (this.vm.sheets.length > 1) this.sheetMenuOpen = !this.sheetMenuOpen;

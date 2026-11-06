@@ -90,6 +90,7 @@ export class AppComponent {
     selectSheet: index => this.selectSheet(index),
     addSheet: () => this.addSheet(),
     removeSheet: () => this.removeSheet(),
+    updateSheetProperties: (name, details) => this.updateSheetProperties(name, details),
     updateBackground: event => {
       const value = (event.target as HTMLInputElement).value;
       this.backgroundColor.set(value); this.formatSelection({ background: value });
@@ -158,15 +159,6 @@ export class AppComponent {
 
   clearSelectedLibraryFile(): void {
     this.selectedLibraryFile.set(null);
-  }
-
-  private openHandlesDb(): Promise<IDBDatabase> {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open('calevri-admin', 1);
-      request.onupgradeneeded = () => { if (!request.result.objectStoreNames.contains('settings')) request.result.createObjectStore('settings'); };
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
   }
 
   runExampleAction(): void {
@@ -318,6 +310,24 @@ export class AppComponent {
     this.scheduleWorkbookSave();
   }
 
+  updateSheetProperties(name: string, details: string): string | null {
+    const trimmedName = name.trim();
+    const sheet = this.sheets()[this.currentSheetIndex()];
+    if (!sheet) return 'No hay una hoja seleccionada.';
+    if (!trimmedName) return 'El nombre de la hoja es obligatorio.';
+    if (/[\\/:*?"<>|]/.test(trimmedName) || trimmedName === '.' || trimmedName === '..') {
+      return 'El nombre contiene caracteres no permitidos.';
+    }
+    if (this.sheets().some((item, index) => index !== this.currentSheetIndex() && item.name.toLowerCase() === trimmedName.toLowerCase())) {
+      return 'Ya existe otra hoja con ese nombre.';
+    }
+    this.sheets.update(items => items.map((item, index) => index === this.currentSheetIndex()
+      ? { ...item, name: trimmedName, details }
+      : item));
+    this.scheduleWorkbookSave();
+    return null;
+  }
+
   private updateCurrentSheet(update: (sheet: SheetData) => void): void {
     this.sheets.update(sheets => sheets.map((sheet, index) => {
       if (index !== this.currentSheetIndex()) return sheet;
@@ -342,6 +352,7 @@ export class AppComponent {
           const data = JSON.parse(await file.text()) as Partial<SheetData>;
           loaded.push({
             name,
+            details: typeof data.details === 'string' ? data.details : '',
             cells: data.cells ?? {},
             extraTexts: data.extraTexts ?? {},
             formats: data.formats ?? {},
@@ -368,7 +379,6 @@ export class AppComponent {
       this.selectionEnd.set([0, 0]);
       this.activeKey.set('libro');
       await this.persistWorkbook(book, loaded, savedSheetIndex);
-      await this.setLastBookPath(book.path);
     } catch {
       this.actionMessage.set(`No se pudo abrir el libro «${book.name}».`);
     }
@@ -435,25 +445,4 @@ export class AppComponent {
     await metadataWriter.close();
   }
 
-  private async setLastBookPath(path: string[] | null): Promise<void> {
-    const db = await this.openHandlesDb();
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction('settings', 'readwrite');
-      tx.objectStore('settings').put(path, 'lastBookPath');
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
-    db.close();
-  }
-
-  private async getLastBookPath(): Promise<string[] | null> {
-    const db = await this.openHandlesDb();
-    const path = await new Promise<string[] | null>((resolve, reject) => {
-      const request = db.transaction('settings').objectStore('settings').get('lastBookPath');
-      request.onsuccess = () => resolve(request.result ?? null);
-      request.onerror = () => reject(request.error);
-    });
-    db.close();
-    return path;
-  }
 }
