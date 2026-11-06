@@ -24,7 +24,7 @@
       } @else if (activeKey() === 'inicio' || activeKey() === 'libro') {
         <app-spreadsheet-section [vm]="spreadsheetVm()"></app-spreadsheet-section>
       } @else if (activeKey() === 'reproductor') {
-        <app-reproductor [selectedFile]="selectedLibraryFile()" (fileConsumed)="clearSelectedLibraryFile()" (currentFileNameChange)="setCurrentPlayerFileName($event)"></app-reproductor>
+        <div class="player-view-placeholder" aria-hidden="true"></div>
       } @else if (activeKey() === 'datos') {
         <app-data-section></app-data-section>
       } @else if (activeKey() === 'settings') {
@@ -34,8 +34,11 @@
       } @else {
         <p class="helper-text">Selecciona una sección del menú.</p>
       }
-    </app-view-content> 
+     </app-view-content>
     }
+    <div class="persistent-player" [class.active]="activeKey() === 'reproductor'">
+      <app-reproductor [selectedFile]="selectedLibraryFile()" (fileConsumed)="clearSelectedLibraryFile()" (currentFileNameChange)="setCurrentPlayerFileName($event)"></app-reproductor>
+    </div>
   </section>
   @if (activeKey() !== 'menu') { <app-main-menu [items]="sections" [activeKey]="activeKey()" (selected)="navigate($event)"></app-main-menu> }
   <footer class="app-footer"><span>CrealitySolution.com</span><span class="footer-vents" aria-hidden="true"></span><span>{{ version }}</span></footer>

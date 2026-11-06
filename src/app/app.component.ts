@@ -44,7 +44,7 @@ export class AppComponent {
     { key: 'settings', label: 'Settings', icon: '⚙', title: 'Settings', description: 'Configuración y sincronización de bibliotecas.', cardTitle: 'Sincronización P2P', cardText: 'Sincroniza los archivos de la biblioteca directamente entre dispositivos.' }
    
   ];
-  readonly activeKey = signal(this.sections[0].key);
+  readonly activeKey = signal('status');
   readonly menuReturnKey = signal(this.sections[0].key);
   readonly activeSection = computed(() => this.sections.find((section) => section.key === this.activeKey()) ?? this.sections[0]);
   readonly activeIndex = computed(() => this.sections.findIndex((section) => section.key === this.activeKey()));

@@ -13,6 +13,9 @@
 .content-frame.player-screen { display: flex; flex-direction: column; overflow: hidden; }
 .content-frame.player-screen > app-view-content { display: flex; flex: 1 1 auto; width: 100%; min-height: 0; overflow: hidden; }
 .content-frame.player-screen .view-content { min-height: 0; overflow: hidden; }
+.persistent-player { position: absolute; z-index: 2; inset: 42px 15px 15px; display: flex; min-width: 0; min-height: 0; visibility: hidden; pointer-events: none; }
+.persistent-player.active { visibility: visible; pointer-events: auto; }
+.persistent-player app-reproductor { display: flex; flex: 1 1 auto; min-width: 0; min-height: 0; }
 .content-frame.settings-screen { display: flex; flex-direction: column; overflow: hidden; }
 .content-frame.settings-screen > app-view-content { display: flex; flex: 1 1 auto; width: 100%; min-height: 0; overflow: hidden; }
 .content-frame.settings-screen .view-content { display: flex; flex: 1 1 auto; min-height: 0; flex-direction: column; overflow: hidden; }

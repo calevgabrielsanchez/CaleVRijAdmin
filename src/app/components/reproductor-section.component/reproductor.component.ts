@@ -1,5 +1,8 @@
 import { Component, ElementRef, EventEmitter, Input, OnDestroy, Output, ViewChild, inject } from '@angular/core';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
+import { Capacitor } from '@capacitor/core';
+import type { PluginListenerHandle } from '@capacitor/core';
+import { AndroidDirectoryAccess } from '@calevrij/admin-android-directory-access';
 import { ConfigService, PlayerBookmark } from '../../services/config.service';
 import type { LibraryMediaSource } from '../../services/library-tree.service';
 
@@ -43,6 +46,7 @@ export class ReproductorComponent implements OnDestroy {
     this.autoplayOnAttach = this.canPlayItem(this.playlist[0]) && !this.isNativeSource(file);
     this.currentFileNameChange.emit(file.name);
     this.fileConsumed.emit();
+    this.syncMediaNotification(true);
   }
 
   @Output() readonly fileConsumed = new EventEmitter<void>();
@@ -86,13 +90,23 @@ export class ReproductorComponent implements OnDestroy {
   private touchPanStartOffsetY = 0;
   private messageFadeTimer?: ReturnType<typeof setTimeout>;
   private messageClearTimer?: ReturnType<typeof setTimeout>;
+  private mediaActionListener?: PluginListenerHandle;
+  private lastNotificationUpdate = 0;
 
   constructor() {
     void this.config.whenReady();
+    if (Capacitor.getPlatform() === 'android') {
+      void AndroidDirectoryAccess.addListener('mediaAction', event => this.handleMediaAction(event.action, event.position))
+        .then(listener => { this.mediaActionListener = listener; })
+        .catch(() => undefined);
+    }
   }
 
   ngOnDestroy(): void {
     this.currentMedia?.pause();
+    this.setPlaybackAwake(false);
+    void this.mediaActionListener?.remove();
+    this.syncMediaNotification(true, false);
     for (const item of this.playlist) this.releasePlaylistItem(item);
     if (this.messageFadeTimer) clearTimeout(this.messageFadeTimer);
     if (this.messageClearTimer) clearTimeout(this.messageClearTimer);
@@ -134,6 +148,7 @@ export class ReproductorComponent implements OnDestroy {
     }
     if (this.currentItem) this.currentFileNameChange.emit(this.currentItem.file.name);
     this.setMessage('');
+    this.syncMediaNotification(true);
   }
 
   selectFile(index: number): void {
@@ -149,6 +164,7 @@ export class ReproductorComponent implements OnDestroy {
     this.imagePanY = 0;
     this.pdfZoom = 1;
     this.currentFileNameChange.emit(this.currentItem?.file.name ?? '');
+    this.syncMediaNotification(true);
   }
 
   imageZoomPercent(): number { return Math.round(this.imageZoom * 100); }
@@ -230,11 +246,49 @@ export class ReproductorComponent implements OnDestroy {
   mediaStarted(): void {
     this.isPlaying = true;
     this.showPlaybackControls = true;
+    this.setPlaybackAwake(true);
+    this.syncMediaNotification(true);
   }
 
   mediaPaused(): void {
     this.isPlaying = false;
     this.showPlaybackControls = true;
+    this.setPlaybackAwake(false);
+    this.syncMediaNotification(true);
+  }
+
+  private setPlaybackAwake(active: boolean): void {
+    if (Capacitor.getPlatform() === 'android') {
+      void AndroidDirectoryAccess.setPlaybackAwake({ active }).catch(() => undefined);
+    }
+  }
+
+  private syncMediaNotification(force = false, active = this.canSeek): void {
+    if (Capacitor.getPlatform() !== 'android') return;
+    const now = Date.now();
+    if (!force && now - this.lastNotificationUpdate < 1000) return;
+    this.lastNotificationUpdate = now;
+    void AndroidDirectoryAccess.setMediaNotification({
+      active,
+      title: this.currentItem?.file.name ?? '',
+      isPlaying: this.isPlaying,
+      position: Math.round(this.currentTime * 1000),
+      duration: Math.round(this.duration * 1000)
+    }).catch(() => undefined);
+  }
+
+  private handleMediaAction(action: string, position?: number): void {
+    if (action === 'play') { void this.play(); return; }
+    if (action === 'pause') { this.currentMedia?.pause(); return; }
+    if (action === 'rewind') { this.seekBy(-10); return; }
+    if (action === 'forward') { this.seekBy(10); return; }
+    if (action === 'seek' && position !== undefined && this.currentMedia) {
+      this.currentMedia.currentTime = Math.max(0, Math.min(this.duration || position / 1000, position / 1000));
+      this.currentTime = this.currentMedia.currentTime;
+      this.syncMediaNotification(true);
+      return;
+    }
+    if (action === 'bookmark') this.addBookmark();
   }
 
   previous(): void {
@@ -275,6 +329,7 @@ export class ReproductorComponent implements OnDestroy {
     if (!this.currentMedia || !Number.isFinite(this.duration)) return;
     this.currentMedia.currentTime = Math.max(0, Math.min(this.duration, this.currentMedia.currentTime + seconds));
     this.currentTime = this.currentMedia.currentTime;
+    this.syncMediaNotification(true);
   }
 
   seekTo(event: Event): void {
@@ -282,15 +337,20 @@ export class ReproductorComponent implements OnDestroy {
     if (!this.currentMedia || !Number.isFinite(value)) return;
     this.currentMedia.currentTime = value;
     this.currentTime = value;
+    this.syncMediaNotification(true);
   }
 
   updateTime(): void {
-    if (this.currentMedia) this.currentTime = this.currentMedia.currentTime;
+    if (this.currentMedia) {
+      this.currentTime = this.currentMedia.currentTime;
+      this.syncMediaNotification();
+    }
   }
 
   updateDuration(): void {
     if (this.currentMedia && Number.isFinite(this.currentMedia.duration)) {
       this.duration = this.currentMedia.duration;
+      this.syncMediaNotification(true);
     }
   }
 

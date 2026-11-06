@@ -1,8 +1,13 @@
 package com.calevrij.admin.directoryaccess;
 
 import android.app.Activity;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.net.Uri;
+import android.os.Build;
+import android.os.PowerManager;
 import android.util.Base64;
 import android.webkit.MimeTypeMap;
 import androidx.documentfile.provider.DocumentFile;
@@ -20,6 +25,30 @@ import java.io.OutputStream;
 
 @CapacitorPlugin(name = "AndroidDirectoryAccess")
 public class AndroidDirectoryAccessPlugin extends Plugin {
+    private static boolean mediaServiceStarted;
+    private PowerManager.WakeLock playbackWakeLock;
+    private BroadcastReceiver mediaActionReceiver;
+
+    @Override
+    public void load() {
+        super.load();
+        mediaActionReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                JSObject event = new JSObject();
+                event.put("action", intent.getStringExtra("action"));
+                if (intent.hasExtra("position")) event.put("position", intent.getLongExtra("position", 0));
+                notifyListeners("mediaAction", event);
+            }
+        };
+        IntentFilter filter = new IntentFilter(PlaybackNotificationService.ACTION_COMMAND);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getContext().registerReceiver(mediaActionReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            getContext().registerReceiver(mediaActionReceiver, filter);
+        }
+    }
+
     @PluginMethod
     public void pickDirectory(PluginCall call) {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
@@ -130,6 +159,40 @@ public class AndroidDirectoryAccessPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void setPlaybackAwake(PluginCall call) {
+        try {
+            if (call.getBoolean("active", false)) acquirePlaybackWakeLock();
+            else releasePlaybackWakeLock();
+            call.resolve();
+        } catch (Exception error) {
+            call.reject("Could not update background playback lock", error);
+        }
+    }
+
+    @PluginMethod
+    public void setMediaNotification(PluginCall call) {
+        try {
+            boolean active = call.getBoolean("active", false);
+            Intent intent = new Intent(getContext(), PlaybackNotificationService.class)
+                    .setAction(PlaybackNotificationService.ACTION_UPDATE)
+                    .putExtra("active", active)
+                    .putExtra("title", call.getString("title", "Reproductor"))
+                    .putExtra("isPlaying", call.getBoolean("isPlaying", false))
+                    .putExtra("position", call.getLong("position", 0L))
+                    .putExtra("duration", call.getLong("duration", 0L));
+            if (active && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !mediaServiceStarted) {
+                getContext().startForegroundService(intent);
+            } else {
+                getContext().startService(intent);
+            }
+            mediaServiceStarted = active;
+            call.resolve();
+        } catch (Exception error) {
+            call.reject("Could not update playback notification", error);
+        }
+    }
+
+    @PluginMethod
     public void writeFile(PluginCall call) {
         try {
             String path = call.getString("path");
@@ -212,5 +275,28 @@ public class AndroidDirectoryAccessPlugin extends Plugin {
             path.append(parts[index]);
         }
         return path.toString();
+    }
+
+    private synchronized void acquirePlaybackWakeLock() {
+        if (playbackWakeLock == null) {
+            PowerManager manager = (PowerManager) getContext().getSystemService(Context.POWER_SERVICE);
+            playbackWakeLock = manager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, getContext().getPackageName() + ":mediaPlayback");
+            playbackWakeLock.setReferenceCounted(false);
+        }
+        if (!playbackWakeLock.isHeld()) playbackWakeLock.acquire();
+    }
+
+    private synchronized void releasePlaybackWakeLock() {
+        if (playbackWakeLock != null && playbackWakeLock.isHeld()) playbackWakeLock.release();
+    }
+
+    @Override
+    protected void handleOnDestroy() {
+        releasePlaybackWakeLock();
+        if (mediaActionReceiver != null) {
+            try { getContext().unregisterReceiver(mediaActionReceiver); } catch (IllegalArgumentException ignored) {}
+            mediaActionReceiver = null;
+        }
+        super.handleOnDestroy();
     }
 }
