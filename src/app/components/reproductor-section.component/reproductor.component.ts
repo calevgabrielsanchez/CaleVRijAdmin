@@ -1,15 +1,17 @@
 import { Component, ElementRef, EventEmitter, Input, OnDestroy, Output, ViewChild, inject } from '@angular/core';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { ConfigService, PlayerBookmark } from '../../services/config.service';
+import type { LibraryMediaSource } from '../../services/library-tree.service';
 
 type MediaKind = 'audio' | 'video' | 'image' | 'pdf' | 'other';
 
 interface PlaylistItem {
-  file: File;
+  file: File | LibraryMediaSource;
   url: string;
   safeUrl: SafeResourceUrl;
   kind: MediaKind;
   key: string;
+  ownsObjectUrl: boolean;
 }
 
 @Component({
@@ -23,10 +25,10 @@ export class ReproductorComponent implements OnDestroy {
   private readonly config = inject(ConfigService);
 
   @Input()
-  set selectedFile(file: File | null) {
+  set selectedFile(file: File | LibraryMediaSource | null) {
     if (!file) return;
     this.currentMedia?.pause();
-    for (const item of this.playlist) URL.revokeObjectURL(item.url);
+    for (const item of this.playlist) this.releasePlaylistItem(item);
     this.playlist = [this.createPlaylistItem(file)];
     this.currentIndex = 0;
     this.currentTime = 0;
@@ -38,7 +40,7 @@ export class ReproductorComponent implements OnDestroy {
     this.imagePanY = 0;
     this.pdfZoom = 1;
     this.setMessage('');
-    this.autoplayOnAttach = this.canPlayItem(this.playlist[0]);
+    this.autoplayOnAttach = this.canPlayItem(this.playlist[0]) && !this.isNativeSource(file);
     this.currentFileNameChange.emit(file.name);
     this.fileConsumed.emit();
   }
@@ -91,7 +93,7 @@ export class ReproductorComponent implements OnDestroy {
 
   ngOnDestroy(): void {
     this.currentMedia?.pause();
-    for (const item of this.playlist) URL.revokeObjectURL(item.url);
+    for (const item of this.playlist) this.releasePlaylistItem(item);
     if (this.messageFadeTimer) clearTimeout(this.messageFadeTimer);
     if (this.messageClearTimer) clearTimeout(this.messageClearTimer);
   }
@@ -343,7 +345,7 @@ export class ReproductorComponent implements OnDestroy {
       : `${minutes.toString().padStart(2, '0')}:${remainder.toString().padStart(2, '0')}`;
   }
 
-  private getMediaKind(file: File): MediaKind {
+  private getMediaKind(file: File | LibraryMediaSource): MediaKind {
     const extension = file.name.split('.').pop()?.toLowerCase() ?? '';
     if (file.type.startsWith('audio/') || ['mp3', 'wav', 'ogg', 'oga', 'aac', 'm4a', 'flac', 'opus', 'weba'].includes(extension)) return 'audio';
     if (file.type.startsWith('video/') || ['mp4', 'm4v', 'webm', 'ogv', 'mov', 'avi', 'mkv', 'mpeg', 'mpg'].includes(extension)) return 'video';
@@ -352,15 +354,25 @@ export class ReproductorComponent implements OnDestroy {
     return 'other';
   }
 
-  private createPlaylistItem(file: File): PlaylistItem {
-    const url = URL.createObjectURL(file);
+  private createPlaylistItem(file: File | LibraryMediaSource): PlaylistItem {
+    const isNativeSource = this.isNativeSource(file);
+    const url = isNativeSource ? file.url : URL.createObjectURL(file);
     return {
       file,
       url,
       safeUrl: this.sanitizer.bypassSecurityTrustResourceUrl(url),
       kind: this.getMediaKind(file),
-      key: `${file.name}:${file.size}:${file.lastModified}`
+      key: `${file.name}:${file.size}:${file.lastModified}`,
+      ownsObjectUrl: !isNativeSource
     };
+  }
+
+  private isNativeSource(file: File | LibraryMediaSource): file is LibraryMediaSource {
+    return 'source' in file && file.source === 'android';
+  }
+
+  private releasePlaylistItem(item: PlaylistItem): void {
+    if (item.ownsObjectUrl) URL.revokeObjectURL(item.url);
   }
 
   private canPlayItem(item: PlaylistItem): boolean {

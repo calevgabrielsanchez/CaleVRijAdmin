@@ -10,6 +10,8 @@ import { ViewContentComponent, ViewContentMode } from './components/view-content
 import { ProjectDirectoryHandle as DirectoryHandle, ProjectLibraryManagerComponent, ProjectLibraryNode as TreeNode } from './components/view-content.component/project-library-manager.component';
 import { CreatividadComponent } from './components/creatividad.component/creatividad.component';
 import { ConfigService } from './services/config.service';
+import type { LibraryMediaSource } from './services/library-tree.service';
+import { LibraryTreeService } from './services/library-tree.service';
 
 interface AppSection {
   key: string;
@@ -32,6 +34,7 @@ interface AppSection {
 export class AppComponent {
   @ViewChild(TextPlusComponent) private textPlusInstance?: TextPlusComponent;
   private readonly config = inject(ConfigService);
+  private readonly libraryTree = inject(LibraryTreeService);
   readonly appName = 'CaleVRijAdmin';
   readonly version = 'v1.0.0';
   readonly sections: readonly AppSection[] = [
@@ -48,7 +51,7 @@ export class AppComponent {
   readonly viewContentMode = computed<ViewContentMode>(() => this.activeKey() === 'inicio' || this.activeKey() === 'libro' ? 'spreadsheet' : this.activeKey() === 'library-tree' ? 'library-tree' : this.activeKey() === 'reproductor' ? 'player' : this.activeKey() === 'settings' ? 'settings' : 'standard');
   readonly paused = signal(false);
   readonly actionMessage = signal('');
-  readonly selectedLibraryFile = signal<File | null>(null);
+  readonly selectedLibraryFile = signal<File | LibraryMediaSource | null>(null);
   readonly currentPlayerFileName = signal('');
   readonly columns = Array.from({ length: 26 }, (_, index) => String.fromCharCode(65 + index));
   readonly rowNumbers = Array.from({ length: 50 }, (_, index) => index + 1);
@@ -106,6 +109,14 @@ export class AppComponent {
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private saveQueue: Promise<void> = Promise.resolve();
 
+  constructor() {
+    void this.libraryTree.initialize().then(() => {
+      if (this.activeKey() === this.sections[0].key && this.libraryTree.lastUsedLibraryId()) {
+        this.activeKey.set('library-tree');
+      }
+    });
+  }
+
   navigate(key: string): void {
     if (this.sections.some((section) => section.key === key)) {
       if (key === 'library-tree') {
@@ -145,7 +156,7 @@ export class AppComponent {
     void this.config.configure(root);
   }
 
-  playLibraryFile(file: File): void {
+  playLibraryFile(file: File | LibraryMediaSource): void {
     this.selectedLibraryFile.set(file);
     this.currentPlayerFileName.set(file.name);
     this.menuReturnKey.set('reproductor');

@@ -5,6 +5,7 @@
     <button class="action-button" type="button" (click)="selectRoot()">
       {{ rootPath() ? 'Cambiar carpeta raíz' : 'Seleccionar carpeta raíz' }}
     </button>
+    @if (rootPermissionRequired()) { <button class="action-button" type="button" (click)="authorizeSavedRoot()">Autorizar carpeta raíz guardada</button> }
     <input #rootPicker class="visually-hidden" type="file" webkitdirectory directory multiple aria-label="Seleccionar carpeta raíz" (change)="selectRootFiles($event)">
     @if (fallbackMode()) {
       <div class="library-tree fallback-tree" aria-label="Contenido de carpeta raíz"><div class="tree-root"><span aria-hidden="true">📁</span><strong>{{ rootPath() }}</strong><small>{{ fallbackEntries().length }} elementos · solo lectura</small></div>@for (entry of fallbackEntries(); track entry.path) { <div class="fallback-tree-row" [style.padding-left.px]="entry.depth * 18 + 8"><span aria-hidden="true">{{ entry.kind === 'directory' ? '📁' : '📄' }}</span><span class="fallback-entry-name">{{ entry.name }}</span>@if (entry.kind === 'file') { <small>{{ entry.size }} bytes</small> }</div> }</div>

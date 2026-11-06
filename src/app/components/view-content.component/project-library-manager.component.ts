@@ -1,4 +1,4 @@
-import { Component, ElementRef, EventEmitter, Input, OnChanges, Output, SimpleChanges, ViewChild, signal } from '@angular/core';
+import { Component, ElementRef, EventEmitter, Input, OnChanges, OnInit, Output, SimpleChanges, ViewChild, signal } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
 import { AndroidDirectoryAccess } from '@calevrij/admin-android-directory-access';
 
@@ -56,7 +56,7 @@ class AndroidProjectFileHandle implements ProjectFileHandle {
 class AndroidProjectDirectoryHandle implements ProjectDirectoryHandle {
   readonly kind = 'directory' as const;
 
-  constructor(private readonly uri: string, private readonly path: string, readonly name: string) {}
+  constructor(readonly uri: string, private readonly path: string, readonly name: string) {}
 
   async *entries(): AsyncIterable<[string, ProjectDirectoryHandle | ProjectFileHandle]> {
     const { entries } = await AndroidDirectoryAccess.listDirectory({ uri: this.uri, path: this.path });
@@ -109,6 +109,11 @@ export interface ProjectLibraryNode {
 
 interface FallbackNode { path: string; name: string; kind: 'directory' | 'file'; size: number; depth: number }
 
+const PROJECT_ANDROID_ROOT_KEY = 'calevrij.project-library.android-root.v1';
+const PROJECT_ROOT_DATABASE = 'calevrij-project-library';
+const PROJECT_ROOT_STORE = 'roots';
+const PROJECT_LAST_ROOT_KEY = 'last-used';
+
 @Component({
   selector: 'app-project-library-manager',
   standalone: true,
@@ -120,7 +125,7 @@ interface FallbackNode { path: string; name: string; kind: 'directory' | 'file';
     '(document:keydown.escape)': 'closeNodeMenu()'
   }
 })
-export class ProjectLibraryManagerComponent implements OnChanges {
+export class ProjectLibraryManagerComponent implements OnChanges, OnInit {
   @ViewChild('rootPicker') private rootPicker?: ElementRef<HTMLInputElement>;
   @Input() active = false;
   @Output() readonly bookSelected = new EventEmitter<ProjectLibraryNode | null>();
@@ -143,8 +148,12 @@ export class ProjectLibraryManagerComponent implements OnChanges {
   readonly fallbackMode = signal(false);
   readonly fallbackEntries = signal<FallbackNode[]>([]);
   readonly openMenuPath = signal<string | null>(null);
+  readonly rootPermissionRequired = signal(false);
+  private pendingBrowserRoot: ProjectDirectoryHandle | null = null;
 
   constructor() {}
+
+  ngOnInit(): void { void this.restoreLastRoot(); }
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['active'] && !changes['active'].currentValue) this.closeNodeMenu();
@@ -240,11 +249,106 @@ export class ProjectLibraryManagerComponent implements OnChanges {
   private async activateRoot(handle: ProjectDirectoryHandle, label?: string): Promise<void> {
     this.rootHandle.set(handle);
     this.rootPath.set(label || handle.name);
+    this.rootPermissionRequired.set(false);
+    this.pendingBrowserRoot = null;
     this.fallbackMode.set(false);
     this.fallbackEntries.set([]);
     this.rootHandleChange.emit(handle);
     this.bookSelected.emit(null);
+    await this.rememberRoot(handle);
     await this.refreshTree();
+  }
+
+  async authorizeSavedRoot(): Promise<void> {
+    const handle = this.pendingBrowserRoot;
+    if (!handle) return;
+    try {
+      const permission = await handle.requestPermission({ mode: 'readwrite' });
+      if (permission !== 'granted') {
+        this.statusMessage.set('Se necesita permiso de lectura y escritura para usar esta carpeta.');
+        return;
+      }
+      await this.activateRoot(handle);
+      this.statusMessage.set('Carpeta raíz restaurada con acceso de lectura y escritura.');
+    } catch {
+      this.statusMessage.set('No se pudo autorizar la carpeta raíz guardada.');
+    }
+  }
+
+  private async restoreLastRoot(): Promise<void> {
+    if (Capacitor.getPlatform() === 'android') {
+      let uri = '';
+      try { uri = localStorage.getItem(PROJECT_ANDROID_ROOT_KEY) ?? ''; } catch { return; }
+      if (!uri) return;
+      try {
+        const { name } = await AndroidDirectoryAccess.getDirectory({ uri, path: '', create: false });
+        await this.activateRoot(new AndroidProjectDirectoryHandle(uri, '', name));
+        this.statusMessage.set('Se restauró la última carpeta raíz.');
+      } catch {
+        this.statusMessage.set('No se pudo restaurar el acceso a la última carpeta raíz. Selecciónala de nuevo.');
+      }
+      return;
+    }
+
+    try {
+      const handle = await this.loadBrowserRoot();
+      if (!handle) return;
+      const permission = await handle.queryPermission({ mode: 'readwrite' });
+      if (permission === 'granted') {
+        await this.activateRoot(handle);
+        this.statusMessage.set('Se restauró la última carpeta raíz.');
+      } else {
+        this.pendingBrowserRoot = handle;
+        this.rootPermissionRequired.set(true);
+        this.statusMessage.set('El navegador requiere autorizar de nuevo la última carpeta raíz.');
+      }
+    } catch {
+      this.statusMessage.set('No se pudo restaurar la carpeta raíz guardada por el navegador.');
+    }
+  }
+
+  private async rememberRoot(handle: ProjectDirectoryHandle): Promise<void> {
+    try {
+      if (handle instanceof AndroidProjectDirectoryHandle) {
+        localStorage.setItem(PROJECT_ANDROID_ROOT_KEY, handle.uri);
+      } else {
+        const database = await this.openRootDatabase();
+        try {
+          await new Promise<void>((resolve, reject) => {
+            const transaction = database.transaction(PROJECT_ROOT_STORE, 'readwrite');
+            transaction.objectStore(PROJECT_ROOT_STORE).put(handle, PROJECT_LAST_ROOT_KEY);
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error);
+            transaction.onabort = () => reject(transaction.error);
+          });
+        } finally { database.close(); }
+      }
+    } catch { this.statusMessage.set('No se pudo guardar la ruta y el permiso de la carpeta raíz.'); }
+  }
+
+  private async loadBrowserRoot(): Promise<ProjectDirectoryHandle | null> {
+    const database = await this.openRootDatabase();
+    try {
+      return await new Promise<ProjectDirectoryHandle | null>((resolve, reject) => {
+        const request = database.transaction(PROJECT_ROOT_STORE, 'readonly')
+          .objectStore(PROJECT_ROOT_STORE).get(PROJECT_LAST_ROOT_KEY);
+        request.onsuccess = () => resolve((request.result as ProjectDirectoryHandle | undefined) ?? null);
+        request.onerror = () => reject(request.error);
+      });
+    } finally { database.close(); }
+  }
+
+  private openRootDatabase(): Promise<IDBDatabase> {
+    if (typeof indexedDB === 'undefined') return Promise.reject(new Error('IndexedDB no está disponible.'));
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(PROJECT_ROOT_DATABASE, 1);
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains(PROJECT_ROOT_STORE)) request.result.createObjectStore(PROJECT_ROOT_STORE);
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+      request.onblocked = () => reject(new Error('La base de datos de la biblioteca está bloqueada.'));
+    });
   }
 
   selectRootFiles(event: Event): void {
@@ -278,12 +382,34 @@ export class ProjectLibraryManagerComponent implements OnChanges {
 
     this.rootHandle.set(null);
     this.rootPath.set(rootName);
+    this.rootPermissionRequired.set(false);
+    this.pendingBrowserRoot = null;
+    void this.clearRememberedRoot();
     this.libraries.set([]);
     this.fallbackMode.set(true);
     this.fallbackEntries.set([...entries.values()].sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true })));
     this.rootHandleChange.emit(null);
     this.bookSelected.emit(null);
     this.statusMessage.set('Carpeta cargada en modo lectura. Para crear o editar elementos, selecciona una carpeta con permisos de escritura en un navegador compatible.');
+  }
+
+  private async clearRememberedRoot(): Promise<void> {
+    if (Capacitor.getPlatform() === 'android') {
+      try { localStorage.removeItem(PROJECT_ANDROID_ROOT_KEY); } catch { /* Almacenamiento bloqueado. */ }
+      return;
+    }
+    try {
+      const database = await this.openRootDatabase();
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const transaction = database.transaction(PROJECT_ROOT_STORE, 'readwrite');
+          transaction.objectStore(PROJECT_ROOT_STORE).delete(PROJECT_LAST_ROOT_KEY);
+          transaction.oncomplete = () => resolve();
+          transaction.onerror = () => reject(transaction.error);
+          transaction.onabort = () => reject(transaction.error);
+        });
+      } finally { database.close(); }
+    } catch { /* No hay una raíz que conservar. */ }
   }
 
   openCreateDialog(level: ProjectNodeLevel, parent: ProjectDirectoryHandle): void {

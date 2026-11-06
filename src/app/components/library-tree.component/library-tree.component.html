@@ -1,5 +1,6 @@
 <section class="library-manager" aria-label="Library Tree">
   <header class="library-manager-header"><div><h2>Library Tree</h2><p>Registra carpetas raíz y explora su contenido.</p></div><button type="button" class="library-add-button" (click)="addLibrary()">＋ Agregar Biblioteca</button></header>
+  @if (service.browserPermissionRequired()) { <button type="button" class="library-add-button" (click)="requestLastLibraryPermission()">Autorizar última biblioteca</button> }
   @if (service.progress(); as scan) { @if (scan.running) { <div class="scan-progress" role="status"><span>Escaneando… {{ scan.scanned }} elementos</span><progress [value]="scan.percent" max="100"></progress></div> } }
   <div class="library-manager-body">
     <aside class="library-sidebar" aria-label="Bibliotecas registradas"><h3>Bibliotecas</h3>

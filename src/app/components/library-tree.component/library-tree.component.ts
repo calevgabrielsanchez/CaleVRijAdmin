@@ -1,6 +1,7 @@
 import { Component, EventEmitter, Output, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { IndexedLibraryNode, LibraryRecord, LibraryTreeService } from '../../services/library-tree.service';
+import type { LibraryMediaSource } from '../../services/library-tree.service';
 
 @Component({
   selector: 'app-library-tree',
@@ -10,7 +11,7 @@ import { IndexedLibraryNode, LibraryRecord, LibraryTreeService } from '../../ser
   styleUrl: './library-tree.component.css'
 })
 export class LibraryTreeComponent {
-  @Output() readonly fileSelected = new EventEmitter<File>();
+  @Output() readonly fileSelected = new EventEmitter<File | LibraryMediaSource>();
 
   readonly service = inject(LibraryTreeService);
   readonly selectedId = signal('');
@@ -41,7 +42,12 @@ export class LibraryTreeComponent {
 
   constructor() {
     void this.service.initialize().then(() => {
-      if (!this.selectedId()) this.selectedId.set(this.service.libraries()[0]?.id ?? '');
+      const remembered = this.service.libraries().find(library => library.id === this.service.lastUsedLibraryId());
+      const initial = remembered ?? this.service.libraries()[0];
+      if (initial) {
+        this.selectedId.set(initial.id);
+        void this.service.rememberLastUsedLibrary(initial);
+      }
       return this.refreshCoverUrls();
     }).catch(() => this.message.set('No se pudo cargar el índice local de bibliotecas.'));
   }
@@ -59,6 +65,7 @@ export class LibraryTreeComponent {
       const library = await this.service.addLibrary();
       if (!library) return;
       this.selectedId.set(library.id);
+      void this.service.rememberLastUsedLibrary(library);
       this.expandedPaths.set(new Set(['']));
       this.message.set(`Escaneo terminado: ${library.fileCount} archivos y ${library.folderCount} carpetas.`);
       await this.refreshCoverUrls();
@@ -67,9 +74,20 @@ export class LibraryTreeComponent {
 
   selectLibrary(library: LibraryRecord): void {
     this.selectedId.set(library.id);
+    void this.service.rememberLastUsedLibrary(library);
     this.expandedPaths.set(new Set(['']));
     this.visibleLimit.set(250);
     this.search.set('');
+  }
+
+  async requestLastLibraryPermission(): Promise<void> {
+    this.message.set('');
+    try {
+      const granted = await this.service.requestLastBrowserRootPermission();
+      this.message.set(granted ? 'Biblioteca restaurada.' : 'No se concedió el permiso para abrir la última biblioteca.');
+    } catch {
+      this.message.set('No se pudo volver a autorizar la última biblioteca.');
+    }
   }
 
   async rescan(library: LibraryRecord): Promise<void> {
@@ -103,7 +121,7 @@ export class LibraryTreeComponent {
 
     this.message.set('');
     try {
-      const file = await this.service.getFile(library, node);
+      const file = await this.service.getPlaybackSource(library, node);
       this.fileSelected.emit(file);
     } catch (error) {
       this.message.set(error instanceof Error ? error.message : `No se pudo abrir «${node.name}».`);

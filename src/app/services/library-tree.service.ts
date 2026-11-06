@@ -1,4 +1,6 @@
 import { Injectable, effect, inject, signal } from '@angular/core';
+import { Capacitor } from '@capacitor/core';
+import { AndroidDirectoryAccess } from '@calevrij/admin-android-directory-access';
 import { ConfigService, PlayerLibraryConfig } from './config.service';
 
 export interface LibraryDirectoryHandle {
@@ -14,12 +16,123 @@ export interface LibraryDirectoryHandle {
 
 export interface LibraryFileHandle {
   kind: 'file';
+  size?: number;
+  lastModified?: number;
+  mimeType?: string;
   getFile(): Promise<File>;
   createWritable(): Promise<{ write(data: string | Blob): Promise<void>; close(): Promise<void> }>;
 }
 
 export interface LibraryPickerWindow extends Window {
   showDirectoryPicker?: (options?: { mode?: 'readwrite' }) => Promise<LibraryDirectoryHandle>;
+}
+
+export interface LibraryMediaSource {
+  source: 'android';
+  name: string;
+  type: string;
+  size: number;
+  lastModified: number;
+  url: string;
+}
+
+const ANDROID_ROOTS_STORAGE_KEY = 'calevrij.library-tree.android-roots.v1';
+const ANDROID_LAST_ROOT_STORAGE_KEY = 'calevrij.library-tree.android-last-root.v1';
+const BROWSER_ROOT_DATABASE = 'calevrij-library-tree';
+const BROWSER_ROOT_STORE = 'roots';
+const BROWSER_LAST_ROOT_KEY = 'last-used';
+
+class AndroidLibraryFileHandle implements LibraryFileHandle {
+  readonly kind = 'file' as const;
+
+  constructor(
+    private readonly uri: string,
+    private readonly path: string,
+    readonly size?: number,
+    readonly lastModified?: number,
+    readonly mimeType?: string
+  ) {}
+
+  async getFile(): Promise<File> {
+    const result = await AndroidDirectoryAccess.readFile({ uri: this.uri, path: this.path });
+    const bytes = Uint8Array.from(atob(result.data), character => character.charCodeAt(0));
+    return new File([bytes], result.name, { type: result.mimeType, lastModified: result.lastModified });
+  }
+
+  async createWritable(): Promise<{ write(data: string | Blob): Promise<void>; close(): Promise<void> }> {
+    let content: string | Blob = '';
+    return {
+      write: async data => { content = data; },
+      close: async () => {
+        const blob = typeof content === 'string' ? new Blob([content]) : content;
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        let binary = '';
+        for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+          binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+        }
+        await AndroidDirectoryAccess.writeFile({
+          uri: this.uri,
+          path: this.path,
+          data: btoa(binary),
+          mimeType: blob.type || 'application/octet-stream'
+        });
+      }
+    };
+  }
+}
+
+class AndroidLibraryDirectoryHandle implements LibraryDirectoryHandle {
+  readonly kind = 'directory' as const;
+
+  constructor(readonly uri: string, private readonly path: string, readonly name: string) {}
+
+  persistedRoot(): string { return this.uri; }
+
+  async prepareForPlayback(path: string): Promise<LibraryMediaSource> {
+    const cached = await AndroidDirectoryAccess.getFileUri({ uri: this.uri, path });
+    return {
+      source: 'android',
+      name: cached.name,
+      type: cached.mimeType,
+      size: cached.size,
+      lastModified: cached.lastModified,
+      url: Capacitor.convertFileSrc(cached.uri)
+    };
+  }
+
+  async *entries(): AsyncIterable<[string, LibraryDirectoryHandle | LibraryFileHandle]> {
+    const { entries } = await AndroidDirectoryAccess.listDirectory({ uri: this.uri, path: this.path });
+    for (const entry of entries) {
+      const path = this.path ? `${this.path}/${entry.name}` : entry.name;
+      const handle = entry.kind === 'directory'
+        ? new AndroidLibraryDirectoryHandle(this.uri, path, entry.name)
+        : new AndroidLibraryFileHandle(this.uri, path, entry.size, entry.lastModified, entry.mimeType);
+      yield [entry.name, handle];
+    }
+  }
+
+  async getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<LibraryDirectoryHandle> {
+    const path = this.path ? `${this.path}/${name}` : name;
+    const result = await AndroidDirectoryAccess.getDirectory({ uri: this.uri, path, create: options?.create ?? false });
+    return new AndroidLibraryDirectoryHandle(this.uri, path, result.name);
+  }
+
+  async getFileHandle(name: string, options?: { create?: boolean }): Promise<LibraryFileHandle> {
+    if (!options?.create) {
+      const { entries } = await AndroidDirectoryAccess.listDirectory({ uri: this.uri, path: this.path });
+      if (!entries.some(entry => entry.name === name && entry.kind === 'file')) {
+        throw new DOMException(`File not found: ${name}`, 'NotFoundError');
+      }
+    }
+    return new AndroidLibraryFileHandle(this.uri, this.path ? `${this.path}/${name}` : name);
+  }
+
+  async removeEntry(name: string): Promise<void> {
+    await AndroidDirectoryAccess.deleteEntry({ uri: this.uri, path: this.path ? `${this.path}/${name}` : name });
+  }
+
+  async queryPermission(): Promise<PermissionState> { return 'granted'; }
+  async requestPermission(): Promise<PermissionState> { return 'granted'; }
 }
 
 export interface LibraryRecord {
@@ -53,14 +166,17 @@ export interface LibraryScanProgress { libraryId: string; scanned: number; perce
 @Injectable({ providedIn: 'root' })
 export class LibraryTreeService {
   private readonly config = inject(ConfigService);
+  private readonly androidRootsRestored = signal(Capacitor.getPlatform() !== 'android');
   readonly libraries = signal<LibraryRecord[]>([]);
   readonly nodes = signal<IndexedLibraryNode[]>([]);
   readonly progress = signal<LibraryScanProgress | null>(null);
+  readonly lastUsedLibraryId = signal('');
+  readonly browserPermissionRequired = signal(false);
   private initializePromise?: Promise<void>;
 
   constructor() {
     effect(() => {
-      if (!this.config.ready()) return;
+      if (!this.config.ready() || !this.androidRootsRestored()) return;
       this.mergeRegistry(this.config.playerLibraries());
     });
   }
@@ -69,6 +185,18 @@ export class LibraryTreeService {
     if (!this.initializePromise) {
       this.initializePromise = (async () => {
         await this.config.whenReady();
+        if (Capacitor.getPlatform() === 'android') {
+          const roots = await this.restoreAndroidRoots();
+          this.androidRootsRestored.set(true);
+          void this.rescanRestoredRoots(roots);
+        } else {
+          const root = await this.restoreBrowserRoot();
+          if (root) {
+            this.libraries.set([root]);
+            this.lastUsedLibraryId.set(root.id);
+            if (!this.browserPermissionRequired()) void this.rescanRestoredRoots([root]);
+          }
+        }
         this.mergeRegistry(this.config.playerLibraries());
       })();
     }
@@ -80,11 +208,22 @@ export class LibraryTreeService {
   }
 
   async addLibraryFromHandle(root: LibraryDirectoryHandle, name?: string): Promise<LibraryRecord> {
+    if (root instanceof AndroidLibraryDirectoryHandle) {
+      const existing = this.libraries().find(library =>
+        library.root instanceof AndroidLibraryDirectoryHandle && library.root.uri === root.uri
+      );
+      if (existing) {
+        await this.rescan(existing);
+        return this.libraries().find(library => library.id === existing.id) ?? existing;
+      }
+    }
     const record: LibraryRecord = {
       id: crypto.randomUUID(), name: name?.trim() || root.name, root,
       createdAt: new Date().toISOString(), lastScan: '', folderCount: 0, fileCount: 0, totalBytes: 0
     };
     this.libraries.update(items => [...items, record]);
+    this.persistAndroidRoots();
+    if (root instanceof AndroidLibraryDirectoryHandle) void this.rememberLastUsedLibrary(record);
     await this.scan(record);
     const saved = this.libraries().find(item => item.id === record.id) ?? record;
     this.persistRegistry();
@@ -118,6 +257,27 @@ export class LibraryTreeService {
     this.persistRegistry();
   }
 
+  async rememberLastUsedLibrary(library: LibraryRecord): Promise<void> {
+    this.lastUsedLibraryId.set(library.id);
+    if (library.root instanceof AndroidLibraryDirectoryHandle) {
+      try { localStorage.setItem(ANDROID_LAST_ROOT_STORAGE_KEY, library.root.uri); }
+      catch { this.config.message.set('No se pudo recordar la última biblioteca en este dispositivo.'); }
+      return;
+    }
+    try { await this.storeBrowserRoot(library.root); }
+    catch { this.config.message.set('El navegador no pudo guardar el acceso a la última biblioteca.'); }
+  }
+
+  async requestLastBrowserRootPermission(): Promise<boolean> {
+    const library = this.libraries().find(item => item.id === this.lastUsedLibraryId());
+    if (!library || library.root instanceof AndroidLibraryDirectoryHandle) return false;
+    const permission = await library.root.requestPermission({ mode: 'readwrite' });
+    if (permission !== 'granted') return false;
+    this.browserPermissionRequired.set(false);
+    await this.rescan(library);
+    return true;
+  }
+
   private mergeRegistry(registry: PlayerLibraryConfig[]): void {
     if (!registry.length) return;
     const existing = new Set(this.libraries().map(library => library.name));
@@ -129,9 +289,20 @@ export class LibraryTreeService {
   }
 
   async addLibrary(): Promise<LibraryRecord | null> {
-    const picker = (window as LibraryPickerWindow).showDirectoryPicker;
-    if (!picker) throw new Error('El navegador no permite seleccionar carpetas. Usa Chrome o Edge en un contexto seguro, o crea la biblioteca en el almacenamiento del navegador.');
-    const root = await picker.call(window, { mode: 'readwrite' });
+    let root: LibraryDirectoryHandle;
+    if (Capacitor.getPlatform() === 'android') {
+      try {
+        const selected = await AndroidDirectoryAccess.pickDirectory();
+        root = new AndroidLibraryDirectoryHandle(selected.uri, '', selected.name);
+      } catch (error) {
+        if ((error as { code?: string })?.code === 'USER_CANCELLED') return null;
+        throw new Error('No se pudo seleccionar la carpeta de la biblioteca en Android.');
+      }
+    } else {
+      const picker = (window as LibraryPickerWindow).showDirectoryPicker;
+      if (!picker) throw new Error('El navegador no permite seleccionar carpetas. Usa Chrome o Edge en un contexto seguro, o crea la biblioteca en el almacenamiento del navegador.');
+      root = await picker.call(window, { mode: 'readwrite' });
+    }
     const permission = await root.requestPermission({ mode: 'readwrite' });
     if (permission !== 'granted') throw new Error('Se requiere permiso de lectura y escritura.');
     return this.addLibraryFromHandle(root);
@@ -140,6 +311,12 @@ export class LibraryTreeService {
   async removeLibrary(record: LibraryRecord): Promise<void> {
     this.libraries.update(items => items.filter(item => item.id !== record.id));
     this.nodes.update(items => items.filter(item => item.libraryId !== record.id));
+    this.persistAndroidRoots();
+    if (this.lastUsedLibraryId() === record.id) {
+      const next = this.libraries()[0];
+      if (next) await this.rememberLastUsedLibrary(next);
+      else await this.clearLastUsedLibrary();
+    }
     const remaining = this.config.playerLibraries().filter(item => item.id !== record.id && item.name !== record.name);
     for (const library of this.exportRegistry()) {
       if (!remaining.some(item => item.id === library.id || item.name === library.name)) remaining.push(library);
@@ -206,6 +383,16 @@ export class LibraryTreeService {
     return this.resolveFile(record.root, node.path);
   }
 
+  async getPlaybackSource(record: LibraryRecord, node: IndexedLibraryNode): Promise<File | LibraryMediaSource> {
+    if (node.kind !== 'file' || node.libraryId !== record.id) {
+      throw new Error('El elemento seleccionado no es un archivo de esta biblioteca.');
+    }
+    if (record.root instanceof AndroidLibraryDirectoryHandle) {
+      return record.root.prepareForPlayback(node.path);
+    }
+    return this.resolveFile(record.root, node.path);
+  }
+
   formatBytes(size: number): string {
     if (!size) return '0 B';
     const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -230,14 +417,19 @@ export class LibraryTreeService {
             nodes.push({ libraryId: record.id, path, parentPath: current.parentPath, name, kind: 'directory', extension: '', mimeType: '', size: 0, lastModified: 0, depth: current.depth, searchText: name.toLowerCase() });
             queue.push({ directory: entry, parentPath: path, depth: current.depth + 1 });
           } else {
-            const file = await entry.getFile();
-            fileCount++; totalBytes += file.size;
+            const file = entry as LibraryFileHandle & { size?: number; lastModified?: number; mimeType?: string };
+            const needsFallback = file.size === undefined || file.mimeType === undefined || file.lastModified === undefined;
+            const fallback = needsFallback ? await entry.getFile() : null;
+            const size = file.size ?? fallback?.size ?? 0;
+            const mimeType = file.mimeType ?? fallback?.type ?? '';
+            const lastModified = file.lastModified ?? fallback?.lastModified ?? 0;
+            fileCount++; totalBytes += size;
             const extension = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1).toLowerCase() : '';
-            const searchText = `${name} ${extension} ${file.type} ${file.size} ${this.formatBytes(file.size)} ${new Date(file.lastModified).toLocaleDateString()}`.toLowerCase();
-            nodes.push({ libraryId: record.id, path, parentPath: current.parentPath, name, kind: 'file', extension, mimeType: file.type, size: file.size, lastModified: file.lastModified, depth: current.depth, searchText });
+            const searchText = `${name} ${extension} ${mimeType} ${size} ${this.formatBytes(size)} ${new Date(lastModified).toLocaleDateString()}`.toLowerCase();
+            nodes.push({ libraryId: record.id, path, parentPath: current.parentPath, name, kind: 'file', extension, mimeType, size, lastModified, depth: current.depth, searchText });
           }
           scanned++;
-          if (scanned % 250 === 0) {
+          if (scanned % 25 === 0) {
             this.progress.set({ libraryId: record.id, scanned, percent: Math.min(95, Math.floor(scanned / (scanned + queue.length * 500 + 1) * 100)), running: true });
             await new Promise<void>(resolve => setTimeout(resolve, 0));
           }
@@ -251,6 +443,127 @@ export class LibraryTreeService {
       this.progress.set({ libraryId: record.id, scanned, percent: 0, running: false });
       throw error;
     }
+  }
+
+  private async restoreAndroidRoots(): Promise<LibraryRecord[]> {
+    let persisted: string[] = [];
+    let lastRootUri = '';
+    try {
+      const raw = localStorage.getItem(ANDROID_ROOTS_STORAGE_KEY);
+      const parsed: unknown = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(parsed)) persisted = parsed.filter((item): item is string => typeof item === 'string');
+      lastRootUri = localStorage.getItem(ANDROID_LAST_ROOT_STORAGE_KEY) ?? '';
+    } catch {
+      try { localStorage.removeItem(ANDROID_ROOTS_STORAGE_KEY); } catch { /* Almacenamiento bloqueado. */ }
+    }
+
+    const roots: LibraryRecord[] = [];
+    for (const uri of persisted) {
+      let name = 'Biblioteca';
+      try { name = (await AndroidDirectoryAccess.getDirectory({ uri, path: '', create: false })).name; } catch { /* El escaneo avisará si el permiso ya no existe. */ }
+      roots.push({
+        id: crypto.randomUUID(), name, root: new AndroidLibraryDirectoryHandle(uri, '', name),
+        createdAt: new Date().toISOString(), lastScan: '', folderCount: 0, fileCount: 0, totalBytes: 0
+      });
+    }
+    this.libraries.set(roots);
+    const lastRoot = roots.find(root => root.root instanceof AndroidLibraryDirectoryHandle && root.root.uri === lastRootUri) ?? roots[0];
+    this.lastUsedLibraryId.set(lastRoot?.id ?? '');
+    return roots;
+  }
+
+  private async restoreBrowserRoot(): Promise<LibraryRecord | null> {
+    try {
+      const root = await this.loadBrowserRoot();
+      if (!root || root.kind !== 'directory') return null;
+      const permission = await root.queryPermission({ mode: 'readwrite' });
+      this.browserPermissionRequired.set(permission !== 'granted');
+      if (permission !== 'granted') {
+        this.config.message.set('Autoriza de nuevo el acceso a la última biblioteca para abrirla.');
+      }
+      return {
+        id: crypto.randomUUID(), name: root.name, root,
+        createdAt: new Date().toISOString(), lastScan: '', folderCount: 0, fileCount: 0, totalBytes: 0
+      };
+    } catch {
+      this.browserPermissionRequired.set(true);
+      this.config.message.set('No se pudo restaurar el permiso de la última biblioteca guardada por el navegador.');
+      return null;
+    }
+  }
+
+  private async rescanRestoredRoots(roots: LibraryRecord[]): Promise<void> {
+    for (const root of roots) {
+      try { await this.scan(root); }
+      catch { this.config.message.set(`No se pudo recuperar el acceso a «${root.name}». Vuelve a seleccionarla en Library Tree.`); }
+    }
+  }
+
+  private persistAndroidRoots(): void {
+    if (Capacitor.getPlatform() !== 'android') return;
+    const roots = this.libraries().flatMap(library =>
+      library.root instanceof AndroidLibraryDirectoryHandle ? [library.root.persistedRoot()] : []
+    );
+    try { localStorage.setItem(ANDROID_ROOTS_STORAGE_KEY, JSON.stringify(roots)); }
+    catch { this.config.message.set('No se pudo guardar la ruta de la biblioteca en este dispositivo.'); }
+  }
+
+  private async storeBrowserRoot(root: LibraryDirectoryHandle): Promise<void> {
+    const database = await this.openBrowserRootDatabase();
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const transaction = database.transaction(BROWSER_ROOT_STORE, 'readwrite');
+        transaction.objectStore(BROWSER_ROOT_STORE).put(root, BROWSER_LAST_ROOT_KEY);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+        transaction.onabort = () => reject(transaction.error);
+      });
+    } finally { database.close(); }
+  }
+
+  private async loadBrowserRoot(): Promise<LibraryDirectoryHandle | null> {
+    const database = await this.openBrowserRootDatabase();
+    try {
+      return await new Promise<LibraryDirectoryHandle | null>((resolve, reject) => {
+        const request = database.transaction(BROWSER_ROOT_STORE, 'readonly')
+          .objectStore(BROWSER_ROOT_STORE).get(BROWSER_LAST_ROOT_KEY);
+        request.onsuccess = () => resolve((request.result as LibraryDirectoryHandle | undefined) ?? null);
+        request.onerror = () => reject(request.error);
+      });
+    } finally { database.close(); }
+  }
+
+  private async clearLastUsedLibrary(): Promise<void> {
+    this.lastUsedLibraryId.set('');
+    if (Capacitor.getPlatform() === 'android') {
+      try { localStorage.removeItem(ANDROID_LAST_ROOT_STORAGE_KEY); } catch { /* Almacenamiento bloqueado. */ }
+      return;
+    }
+    try {
+      const database = await this.openBrowserRootDatabase();
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const transaction = database.transaction(BROWSER_ROOT_STORE, 'readwrite');
+          transaction.objectStore(BROWSER_ROOT_STORE).delete(BROWSER_LAST_ROOT_KEY);
+          transaction.oncomplete = () => resolve();
+          transaction.onerror = () => reject(transaction.error);
+          transaction.onabort = () => reject(transaction.error);
+        });
+      } finally { database.close(); }
+    } catch { /* No hay una raíz que conservar. */ }
+  }
+
+  private openBrowserRootDatabase(): Promise<IDBDatabase> {
+    if (typeof indexedDB === 'undefined') return Promise.reject(new Error('IndexedDB no está disponible.'));
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(BROWSER_ROOT_DATABASE, 1);
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains(BROWSER_ROOT_STORE)) request.result.createObjectStore(BROWSER_ROOT_STORE);
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+      request.onblocked = () => reject(new Error('La base de datos de bibliotecas está bloqueada.'));
+    });
   }
 
   private typeName(extension: string): string {

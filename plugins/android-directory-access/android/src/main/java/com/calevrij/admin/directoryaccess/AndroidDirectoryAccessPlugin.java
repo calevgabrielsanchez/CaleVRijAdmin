@@ -113,6 +113,23 @@ public class AndroidDirectoryAccessPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void getFileUri(PluginCall call) {
+        try {
+            DocumentFile file = resolveFile(call.getString("uri"), call.getString("path"));
+            if (file == null || !file.isFile()) throw new Exception("File not found");
+            JSObject response = new JSObject();
+            response.put("uri", file.getUri().toString());
+            response.put("name", file.getName());
+            response.put("mimeType", file.getType() == null ? "application/octet-stream" : file.getType());
+            response.put("size", file.length());
+            response.put("lastModified", file.lastModified());
+            call.resolve(response);
+        } catch (Exception error) {
+            call.reject("Could not resolve the selected file", error);
+        }
+    }
+
+    @PluginMethod
     public void writeFile(PluginCall call) {
         try {
             String path = call.getString("path");
