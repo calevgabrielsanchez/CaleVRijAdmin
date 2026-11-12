@@ -1,4 +1,4 @@
-import { Component, Input, inject, signal, ChangeDetectorRef, ElementRef, ViewChild } from '@angular/core';
+import { Component, Input, inject, signal, ChangeDetectorRef, ElementRef, ViewChild, effect, EventEmitter, Output } from '@angular/core';
 import {
   faSave, faFileHalfDashed, faGlobe, faBook, faEarthAmericas, faScroll, faImage,
   faCircleInfo, faSquarePlus, faBaby, faDragon, faMeteor, faSkullCrossbones, faTrashCan,
@@ -12,6 +12,7 @@ import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { FormGroup, FormControl, ReactiveFormsModule } from '@angular/forms'
 import { CommonModule } from '@angular/common';
 import { ProjectDirectoryHandle } from '../view-content.component/project-library-manager.component';
+import type { LibraryMediaSource } from '../../services/library-tree.service';
 import { CreatividadStorageService } from './creatividad-storage.service';
 import { Creatividad, CreatividadData, Dibujo, Memoria } from './creatividad.models';
 import { CreatividadNuevaComponent } from '../menu.creatividad.component/creatividad-nueva.component';
@@ -39,6 +40,7 @@ interface ArquetipoCreatividad {
   styleUrl: './creatividad.component.css',
 })
 export class CreatividadComponent {
+  @Output() readonly mediaReference = new EventEmitter<File | LibraryMediaSource>();
 
   camposSemanticos: FormGroup;
   controlesTienda: FormGroup;
@@ -127,6 +129,11 @@ export class CreatividadComponent {
   //=========================================================
 
   constructor() {
+    effect(() => {
+      this.storage.syncRefreshVersion();
+      const root = this.selectedLibraryRoot;
+      if (root) void this.loadFromLibrary(root);
+    });
     this.camposSemanticos = new FormGroup({
       animales: new FormControl(false),
       adjetivos: new FormControl(false),
@@ -230,8 +237,12 @@ export class CreatividadComponent {
       this.memoria = this.savedMemorias.at(-1) ?? ({} as Memoria);
       this.dibujoModel = this.savedDibujos.at(-1) ?? ({} as Dibujo);
       this.storageMessage = 'Datos cargados desde la carpeta Creatividad de la biblioteca.';
+      this.cdr.detectChanges();
     } catch {
-      if (generation === this.loadGeneration) this.storageMessage = 'No se pudieron cargar los datos de Creatividad.';
+      if (generation === this.loadGeneration) {
+        this.storageMessage = 'No se pudieron cargar los datos de Creatividad.';
+        this.cdr.detectChanges();
+      }
     }
   }
 
@@ -258,6 +269,11 @@ export class CreatividadComponent {
 
   cerrar() {
     this.closeTextPlus(this.textoAEditar);
+  }
+
+  openReferencedMedia(file: File | LibraryMediaSource): void {
+    this.mostrarTextPlus.set(false);
+    this.mediaReference.emit(file);
   }
 
   closeTextPlus(resolvedValue: string) {

@@ -1,5 +1,6 @@
 import { Injectable, signal } from '@angular/core';
 import { ProjectDirectoryHandle, ProjectFileHandle } from '../view-content.component/project-library-manager.component';
+import type { LibraryDeletion } from '../../services/library-tree.service';
 
 export type P2PState =
   | 'idle'
@@ -33,12 +34,16 @@ interface SyncFileMeta {
   path: string;
   size: number;
   lastModified: number;
+  contentHash?: string;
+  normalized?: boolean;
 }
 
 interface SyncMetadataEntry {
   lastModified: number;
   receivedAt: number;
 }
+
+const LIBRARY_DELETIONS_FILE = '.calevri/library-deletions.json';
 
 interface SignalPayload {
   type: 'offer' | 'answer';
@@ -56,6 +61,8 @@ export class P2PSyncService {
   readonly syncing = signal(false);
   readonly invitationCode = signal('');
   readonly answerCode = signal('');
+  readonly remoteLibraryNames = signal<string[]>([]);
+  readonly mediaContainerName = signal('');
   readonly log = signal<string[]>([]);
   readonly peerId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
     ? crypto.randomUUID()
@@ -64,12 +71,17 @@ export class P2PSyncService {
   private pc: RTCPeerConnection | null = null;
   private channel: RTCDataChannel | null = null;
   private roots = new Map<SyncRootKind, SyncRoot>();
-  private remoteRoots = new Map<SyncRootKind, RootInfo>();
+  private mediaRoots: SyncRoot[] = [];
+  private remoteRoots = new Map<string, RootInfo>();
   private remoteRootsReady = false;
   private remotePeerId = '';
   private remoteFiles: SyncFileMeta[] | null = null;
+  private remoteDeletions: LibraryDeletion[] | null = null;
+  private localDeletions = new Map<string, LibraryDeletion>();
+  private remoteDeletionsReady = false;
   private localFiles: SyncFileMeta[] = [];
   private localMeta = new Map<string, SyncFileMeta>();
+  private localSourcePaths = new Map<string, string>();
   private incomingManifest: SyncFileMeta[] | null = null;
   private localReady = false;
   private planStarted = false;
@@ -98,6 +110,7 @@ export class P2PSyncService {
   private idleSent = false;
   private remoteIdle = false;
   private disposed = false;
+  private connectionWasEstablished = false;
   private readonly metadataFileName = '.calevri/sync.json';
 
   async createInvitation(roots: SyncRoot[]): Promise<void> {
@@ -188,12 +201,16 @@ export class P2PSyncService {
     if (!this.connected()) throw new Error('No hay una conexión P2P activa.');
     if (this.syncing()) throw new Error('La sincronización ya está en curso.');
     this.remoteFiles = null;
+    this.remoteDeletions = null;
+    this.remoteDeletionsReady = false;
     this.incomingManifest = null;
     this.remoteRoots.clear();
+    this.remoteLibraryNames.set([]);
     this.remoteRootsReady = false;
     this.remotePeerId = '';
     this.localFiles = [];
     this.localMeta.clear();
+    this.localSourcePaths.clear();
     this.localReady = false;
     this.planStarted = false;
     this.queuedSends.clear();
@@ -220,9 +237,19 @@ export class P2PSyncService {
 
   private setRoots(roots: SyncRoot[]): void {
     this.roots = new Map();
+    this.mediaRoots = [];
+    this.mediaContainerName.set('');
     for (const root of roots) {
-      if (root.root) this.roots.set(root.kind, root);
+      if (!root.root) continue;
+      if (root.kind === 'player') {
+        if (this.mediaRoots.some(item => item.name.toLocaleLowerCase() === root.name.toLocaleLowerCase())) continue;
+        this.mediaRoots.push(root);
+      } else {
+        this.roots.set(root.kind, root);
+      }
     }
+    if (this.mediaRoots.length) this.roots.set('player', this.mediaRoots[0]);
+    this.mediaContainerName.set(this.mediaRoots[0]?.name ?? '');
   }
 
   private createPeerConnection(): RTCPeerConnection {
@@ -232,9 +259,13 @@ export class P2PSyncService {
     pc.ondatachannel = event => this.configureChannel(event.channel);
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'connected') {
+        this.connectionWasEstablished = true;
         this.connected.set(true);
       } else if (pc.connectionState === 'failed') {
-        this.fail(new Error('No se pudo establecer la conexión directa. Puede que la red bloquee WebRTC.'));
+        const message = this.connectionWasEstablished
+          ? `La conexión P2P se perdió durante la transferencia (ICE: ${pc.iceConnectionState}). Los archivos confirmados se conservaron; crea una nueva invitación para continuar.`
+          : `No se pudo establecer la conexión directa (ICE: ${pc.iceConnectionState}). Puede que la red bloquee WebRTC.`;
+        this.fail(new Error(message));
       } else if (pc.connectionState === 'disconnected') {
         this.connected.set(false);
         if (this.state() !== 'completed') this.message.set('Conexión P2P interrumpida. Intentando reconectar…');
@@ -281,8 +312,11 @@ export class P2PSyncService {
     this.syncing.set(true);
     this.state.set('syncing');
     this.remoteFiles = null;
+    this.remoteDeletions = null;
+    this.remoteDeletionsReady = false;
     this.incomingManifest = null;
     this.remoteRoots.clear();
+    this.remoteLibraryNames.set([]);
     this.remoteRootsReady = false;
     this.remotePeerId = '';
     this.localReady = false;
@@ -295,10 +329,12 @@ export class P2PSyncService {
     try {
       await this.loadMetadata(this.roots.get('main')!.root);
       this.localFiles = await this.scanRoots();
+      await this.loadLocalDeletions();
       this.localMeta = new Map(this.localFiles.map(file => [this.keyOf(file.root, file.path), file]));
       this.localReady = true;
-      this.addLog(`${this.localFiles.length} archivos locales indexados en ${this.roots.size} biblioteca(s).`);
+      this.addLog(`${this.localFiles.length} archivos locales indexados en ${this.mediaRoots.length + (this.roots.has('main') ? 1 : 0)} biblioteca(s).`);
       this.sendRoots();
+      this.sendDeletions();
       this.sendManifest();
       this.message.set('Esperando el índice del otro dispositivo…');
       await this.maybeRunPlan();
@@ -308,32 +344,88 @@ export class P2PSyncService {
   }
 
   private async scanRoots(): Promise<SyncFileMeta[]> {
-    const files: SyncFileMeta[] = [];
-    for (const root of this.roots.values()) {
+    const files = new Map<string, SyncFileMeta>();
+    this.localSourcePaths.clear();
+    const roots = [...this.roots.values()].filter(root => root.kind === 'main').concat(this.mediaRoots);
+    for (const root of roots) {
       await this.scanRoot(root, files);
     }
-    return files;
+    return [...files.values()];
   }
 
-  private async scanRoot(root: SyncRoot, files: SyncFileMeta[]): Promise<void> {
-    const queue: Array<{ directory: ProjectDirectoryHandle; prefix: string }> = [{ directory: root.root, prefix: '' }];
+  private async loadLocalDeletions(): Promise<void> {
+    this.localDeletions.clear();
+    const parts = LIBRARY_DELETIONS_FILE.split('/');
+    const fileName = parts.pop()!;
+    for (const root of this.mediaRoots) {
+      try {
+        let directory = root.root;
+        for (const part of parts) directory = await directory.getDirectoryHandle(part);
+        const file = await (await directory.getFileHandle(fileName)).getFile();
+        const parsed = JSON.parse(await file.text()) as unknown;
+        if (!Array.isArray(parsed)) continue;
+        for (const deletion of parsed) {
+          if (!this.isLibraryDeletion(deletion)) continue;
+          const key = this.deletionKey(deletion);
+          const current = this.localDeletions.get(key);
+          if (!current || deletion.deletedAt > current.deletedAt) this.localDeletions.set(key, deletion);
+        }
+      } catch { /* Esta biblioteca todavía no tiene eliminaciones registradas. */ }
+    }
+
+    for (const [key, deletion] of this.localDeletions) {
+      const file = this.localFiles.find(item => item.root === 'player' && item.path === `${deletion.libraryName}/${deletion.path}`);
+      if (file && file.lastModified > deletion.deletedAt) this.localDeletions.delete(key);
+    }
+  }
+
+  private async scanRoot(root: SyncRoot, files: Map<string, SyncFileMeta>): Promise<void> {
+    const queue: Array<{ directory: ProjectDirectoryHandle; prefix: string; physicalPrefix: string; normalized: boolean }> = [
+      { directory: root.root, prefix: '', physicalPrefix: '', normalized: true }
+    ];
     while (queue.length) {
       const current = queue.shift()!;
       for await (const [name, entry] of current.directory.entries()) {
         const path = current.prefix ? `${current.prefix}/${name}` : name;
+        const physicalPath = current.physicalPrefix ? `${current.physicalPrefix}/${name}` : name;
         if (entry.kind === 'directory') {
-          queue.push({ directory: entry, prefix: path });
+          if (root.kind === 'player' && !current.prefix && this.mediaRoots.some(other => other.id !== root.id && other.name.toLocaleLowerCase() === name.toLocaleLowerCase())) continue;
+          const legacyLibraryFolder = root.kind === 'player' && !current.prefix && name.toLocaleLowerCase() === root.name.toLocaleLowerCase();
+          queue.push({
+            directory: entry,
+            prefix: legacyLibraryFolder ? '' : path,
+            physicalPrefix: physicalPath,
+            normalized: current.normalized && !legacyLibraryFolder
+          });
         } else {
           if (root.kind === 'main' && path === this.metadataFileName) continue;
-          const file = await entry.getFile();
-          const key = this.keyOf(root.kind, path);
+          if (root.kind === 'player' && path === LIBRARY_DELETIONS_FILE) continue;
+          const virtualPath = current.prefix ? path : name;
+          const syncPath = root.kind === 'player' ? `${root.name}/${virtualPath}` : path;
+          const handle = entry as ProjectFileHandle & { size?: number; lastModified?: number };
+          const fallback = handle.size === undefined || handle.lastModified === undefined ? await entry.getFile() : null;
+          const key = this.keyOf(root.kind, syncPath);
           const metadata = this.metadata.get(key);
-          const effectiveLastModified = metadata && file.lastModified <= metadata.receivedAt + 2000
+          const size = handle.size ?? fallback?.size ?? 0;
+          const fileLastModified = handle.lastModified ?? fallback?.lastModified ?? 0;
+          const effectiveLastModified = metadata && fileLastModified <= metadata.receivedAt + 2000
             ? metadata.lastModified
-            : file.lastModified;
-          files.push({ root: root.kind, path, size: file.size, lastModified: effectiveLastModified });
-          if (files.length % 100 === 0) {
-            this.message.set(`Indexando… ${files.length} archivos locales.`);
+            : fileLastModified;
+          const contentHash = root.kind === 'main' && path === '.calevri/creatividad.json'
+            ? await this.hashFile(fallback ?? await entry.getFile())
+            : undefined;
+          const file: SyncFileMeta = {
+            root: root.kind, path: syncPath, size, lastModified: effectiveLastModified,
+            contentHash, normalized: current.normalized
+          };
+          const existing = files.get(key);
+          if (!existing || file.lastModified > existing.lastModified
+            || (file.lastModified === existing.lastModified && file.normalized && !existing.normalized)) {
+            files.set(key, file);
+            this.localSourcePaths.set(key, physicalPath);
+          }
+          if (files.size % 100 === 0) {
+            this.message.set(`Indexando… ${files.size} archivos locales.`);
             await new Promise<void>(resolve => setTimeout(resolve, 0));
           }
         }
@@ -342,8 +434,13 @@ export class P2PSyncService {
   }
 
   private sendRoots(): void {
-    const roots: RootInfo[] = [...this.roots.values()].map(root => ({ kind: root.kind, id: root.id, name: root.name }));
+    const roots: RootInfo[] = [...this.roots.values()].filter(root => root.kind === 'main').concat(this.mediaRoots)
+      .map(root => ({ kind: root.kind, id: root.id, name: root.name }));
     this.send({ type: 'roots', roots });
+  }
+
+  private sendDeletions(): void {
+    this.send({ type: 'deletions', items: [...this.localDeletions.values()] });
   }
 
   private sendManifest(): void {
@@ -366,6 +463,13 @@ export class P2PSyncService {
       case 'roots':
         this.handleRemoteRoots(message['roots']);
         break;
+      case 'deletions':
+        this.remoteDeletions = Array.isArray(message['items'])
+          ? (message['items'] as LibraryDeletion[]).filter(item => this.isLibraryDeletion(item))
+          : [];
+        this.remoteDeletionsReady = true;
+        await this.maybeRunPlan();
+        break;
       case 'manifest-start':
         this.incomingManifest = [];
         this.remotePeerId = String(message['peerId'] ?? '');
@@ -378,6 +482,11 @@ export class P2PSyncService {
       case 'manifest-end':
         this.remoteFiles = this.incomingManifest ?? [];
         this.incomingManifest = null;
+        const manifestLibraryNames = this.remoteFiles
+          .filter(file => file.root === 'player')
+          .map(file => file.path.split('/')[0])
+          .filter(Boolean);
+        this.remoteLibraryNames.set([...new Set([...this.remoteLibraryNames(), ...manifestLibraryNames])]);
         this.addLog(`${this.remoteFiles.length} archivos recibidos del otro dispositivo.`);
         this.message.set('Comparando archivos…');
         await this.maybeRunPlan();
@@ -426,23 +535,98 @@ export class P2PSyncService {
 
   private handleRemoteRoots(value: unknown): void {
     this.remoteRoots.clear();
+    const remoteNames: string[] = [];
     if (Array.isArray(value)) {
       for (const item of value as RootInfo[]) {
         const kind = this.rootKind(item?.kind);
-        if (kind) this.remoteRoots.set(kind, { kind, id: String(item.id ?? ''), name: String(item.name ?? '') });
+        if (kind) {
+          const root = { kind, id: String(item.id ?? ''), name: String(item.name ?? '') };
+          this.remoteRoots.set(`${kind}:${root.id}`, root);
+          if (kind === 'player' && root.name) remoteNames.push(root.name);
+        }
       }
     }
+    this.remoteLibraryNames.set([...new Set(remoteNames)]);
     this.remoteRootsReady = true;
-    const missing = [...this.remoteRoots.keys()].filter(kind => !this.roots.has(kind));
+    const localNames = new Set(this.mediaRoots.map(root => root.name.toLocaleLowerCase()));
+    const missing = [...this.remoteRoots.values()].filter(root => root.kind === 'player' && !localNames.has(root.name.toLocaleLowerCase()));
     if (missing.length) {
-      this.addLog(`El otro dispositivo tiene ${missing.map(kind => kind === 'player' ? 'biblioteca del reproductor' : 'biblioteca principal').join(' y ')} sin carpeta local. Configúrala en Settings para recibir sus archivos.`);
+      this.addLog(`Se crearán en la biblioteca local las carpetas de medios recibidas: ${missing.map(root => root.name).join(', ')}.`);
     }
     void this.maybeRunPlan();
   }
 
+  private async applyRemoteDeletions(): Promise<void> {
+    for (const deletion of this.remoteDeletions ?? []) {
+      const key = this.deletionKey(deletion);
+      const current = this.localDeletions.get(key);
+      const manifestPath = `${deletion.libraryName}/${deletion.path}`;
+      const localFile = this.localMeta.get(this.keyOf('player', manifestPath));
+      const remoteFile = this.remoteFiles?.find(file => file.root === 'player' && file.path === manifestPath);
+      const newestFileTime = Math.max(localFile?.lastModified ?? 0, remoteFile?.lastModified ?? 0);
+      const merged = current && current.deletedAt > deletion.deletedAt ? current : deletion;
+      if (newestFileTime > merged.deletedAt) {
+        this.localDeletions.delete(key);
+        continue;
+      }
+      this.localDeletions.set(key, merged);
+
+      const root = await this.resolveMediaRoot(deletion.libraryName, true);
+      const parts = this.pathParts(deletion.path);
+      const name = parts.pop()!;
+      let directory = root.root;
+      try {
+        for (const part of parts) directory = await directory.getDirectoryHandle(part);
+        await directory.removeEntry(name);
+        this.addLog(`Eliminado en todos los dispositivos: ${manifestPath}`);
+      } catch { /* El archivo ya no existe en este dispositivo. */ }
+    }
+
+    const names = new Set([...this.localDeletions.values()].map(deletion => deletion.libraryName));
+    for (const name of names) {
+      const root = await this.resolveMediaRoot(name, true);
+      const deletions = [...this.localDeletions.values()].filter(deletion => deletion.libraryName === name);
+      const parts = LIBRARY_DELETIONS_FILE.split('/');
+      const fileName = parts.pop()!;
+      let directory = root.root;
+      for (const part of parts) directory = await directory.getDirectoryHandle(part, { create: true });
+      const handle = await directory.getFileHandle(fileName, { create: true });
+      const writer = await handle.createWritable();
+      await writer.write(JSON.stringify(deletions));
+      await writer.close();
+    }
+  }
+
+  private async resolveMediaRoot(libraryName: string, create: boolean): Promise<SyncRoot> {
+    const existing = this.mediaRoots.find(root => root.name.toLocaleLowerCase() === libraryName.toLocaleLowerCase());
+    if (existing) return existing;
+    const container = this.mediaRoots[0];
+    if (!container) throw new Error('No hay una carpeta local para recibir las bibliotecas multimedia.');
+    return {
+      ...container,
+      id: `${container.id}:${libraryName}`,
+      name: libraryName,
+      root: await container.root.getDirectoryHandle(libraryName, { create })
+    };
+  }
+
+  private isLibraryDeletion(value: unknown): value is LibraryDeletion {
+    if (!value || typeof value !== 'object') return false;
+    const item = value as Partial<LibraryDeletion>;
+    if (typeof item.libraryName !== 'string' || !item.libraryName.trim()
+      || typeof item.path !== 'string' || !Number.isFinite(item.deletedAt)) return false;
+    try { this.pathParts(item.path); return true; }
+    catch { return false; }
+  }
+
+  private deletionKey(deletion: LibraryDeletion): string {
+    return `${deletion.libraryName.toLocaleLowerCase()}:${deletion.path}`;
+  }
+
   private async maybeRunPlan(): Promise<void> {
-    if (!this.remoteRootsReady || !this.localReady || !this.remoteFiles || this.planStarted) return;
+    if (!this.remoteRootsReady || !this.remoteDeletionsReady || !this.localReady || !this.remoteFiles || this.planStarted) return;
     this.planStarted = true;
+    await this.applyRemoteDeletions();
     await this.runPlan();
   }
 
@@ -450,6 +634,24 @@ export class P2PSyncService {
     if (!this.remoteFiles || !this.roots.has('main')) return;
     const remote = new Map(this.remoteFiles.map(file => [this.keyOf(file.root, file.path), file]));
     const local = new Map(this.localFiles.map(file => [this.keyOf(file.root, file.path), file]));
+    const deletions = new Map<string, LibraryDeletion>();
+    for (const deletion of [...this.localDeletions.values(), ...(this.remoteDeletions ?? [])]) {
+      const key = this.deletionKey(deletion);
+      const current = deletions.get(key);
+      if (!current || deletion.deletedAt > current.deletedAt) deletions.set(key, deletion);
+    }
+    for (const [deletionKey, deletion] of deletions) {
+      const key = this.keyOf('player', `${deletion.libraryName}/${deletion.path}`);
+      const localFile = local.get(key);
+      const remoteFile = remote.get(key);
+      const newestFileTime = Math.max(localFile?.lastModified ?? 0, remoteFile?.lastModified ?? 0);
+      if (newestFileTime > deletion.deletedAt) {
+        this.localDeletions.delete(deletionKey);
+        continue;
+      }
+      local.delete(key);
+      remote.delete(key);
+    }
     const paths = [...new Set([...local.keys(), ...remote.keys()])].sort();
     const requests: SyncFileMeta[] = [];
     let skipped = 0;
@@ -464,15 +666,35 @@ export class P2PSyncService {
       if (!localFile && remoteFile) {
         requests.push(remoteFile);
       } else if (localFile && remoteFile) {
-        if (localFile.size === remoteFile.size && localFile.lastModified === remoteFile.lastModified) continue;
+        const sameContent = localFile.size === remoteFile.size
+          && localFile.lastModified === remoteFile.lastModified
+          && (!localFile.contentHash || !remoteFile.contentHash || localFile.contentHash === remoteFile.contentHash);
+        if (sameContent) {
+          const localIsNormalized = localFile.normalized !== false;
+          const remoteIsNormalized = remoteFile.normalized !== false;
+          if (localIsNormalized && remoteIsNormalized) continue;
+          if (localIsNormalized !== remoteIsNormalized) {
+            if (localIsNormalized) this.enqueueSend(localFile.root, localFile.path);
+            else requests.push(remoteFile);
+          } else {
+            this.enqueueSend(localFile.root, localFile.path);
+          }
+          continue;
+        }
         if (remoteFile.lastModified > localFile.lastModified) requests.push(remoteFile);
-        else if (remoteFile.lastModified === localFile.lastModified && this.peerId > this.remotePeerId) requests.push(remoteFile);
+        else if (localFile.lastModified > remoteFile.lastModified) {
+          this.enqueueSend(localFile.root, localFile.path);
+        } else if (this.peerId > this.remotePeerId) {
+          requests.push(remoteFile);
+        } else {
+          this.enqueueSend(localFile.root, localFile.path);
+        }
       }
     }
 
     this.addLog(`Plan: ${requests.length} archivos para recibir${skipped ? `, ${skipped} omitidos por falta de carpeta local` : ''}.`);
     this.message.set(requests.length
-      ? `Sincronizando: ${requests.length} archivos por recibir…`
+      ? `Sincronizando: ${requests.length} archivos por recibir y los cambios locales más recientes…`
       : 'Comprobando si el otro dispositivo necesita archivos…');
 
     for (const file of requests) {
@@ -507,27 +729,63 @@ export class P2PSyncService {
   }
 
   private async sendFile(root: SyncRootKind, path: string): Promise<void> {
-    const file = await this.getLocalFile(root, path);
-    const lastModified = this.localMeta.get(this.keyOf(root, path))?.lastModified ?? file.lastModified;
-    this.send({ type: 'file-start', root, path, size: file.size, lastModified });
+    const handle = await this.getLocalFileHandle(root, path);
+    const lastModified = this.localMeta.get(this.keyOf(root, path))?.lastModified ?? handle.lastModified ?? Date.now();
     const chunkSize = 64 * 1024;
-    for (let offset = 0; offset < file.size; offset += chunkSize) {
-      const chunk = await file.slice(offset, offset + chunkSize).arrayBuffer();
-      await this.waitForBuffer();
-      if (!this.channel || this.channel.readyState !== 'open') throw new Error('La conexión se cerró durante el envío.');
-      this.channel.send(chunk);
+    if (handle.openReader) {
+      const reader = await handle.openReader();
+      try {
+        this.send({ type: 'file-start', root, path, size: reader.size, lastModified });
+        for (let offset = 0; offset < reader.size;) {
+          const chunk = await reader.readChunk(Math.min(chunkSize, reader.size - offset));
+          if (!chunk?.byteLength) throw new Error(`El archivo se interrumpió al leer ${path}.`);
+          await this.waitForBuffer();
+          if (!this.channel || this.channel.readyState !== 'open') throw new Error('La conexión se cerró durante el envío.');
+          this.channel.send(chunk);
+          offset += chunk.byteLength;
+          if (offset % (4 * 1024 * 1024) < chunk.byteLength) {
+            this.message.set(`Enviando ${path} (${this.formatBytes(offset)} / ${this.formatBytes(reader.size)})…`);
+          }
+        }
+      } finally {
+        await reader.close().catch(() => undefined);
+      }
+    } else {
+      const file = await handle.getFile();
+      this.send({ type: 'file-start', root, path, size: file.size, lastModified });
+      for (let offset = 0; offset < file.size; offset += chunkSize) {
+        const chunk = await file.slice(offset, offset + chunkSize).arrayBuffer();
+        await this.waitForBuffer();
+        if (!this.channel || this.channel.readyState !== 'open') throw new Error('La conexión se cerró durante el envío.');
+        this.channel.send(chunk);
+      }
     }
     this.send({ type: 'file-end', root, path });
   }
 
-  private async getLocalFile(root: SyncRootKind, path: string): Promise<File> {
-    const syncRoot = this.roots.get(root);
-    if (!syncRoot) throw new Error('No hay una carpeta local para esta biblioteca.');
+  private async getLocalFileHandle(root: SyncRootKind, path: string): Promise<ProjectFileHandle> {
     const parts = this.pathParts(path);
-    const name = parts.pop()!;
+    const syncRoot = root === 'player'
+      ? this.mediaRoots.find(item => item.name.toLocaleLowerCase() === parts[0]?.toLocaleLowerCase())
+      : this.roots.get(root);
+    if (!syncRoot) throw new Error('No hay una carpeta local para esta biblioteca.');
+    const sourcePath = this.localSourcePaths.get(this.keyOf(root, path)) ?? (root === 'player' ? parts.slice(1).join('/') : path);
+    const sourceParts = this.pathParts(sourcePath);
+    const name = sourceParts.pop()!;
     let directory = syncRoot.root;
-    for (const part of parts) directory = await directory.getDirectoryHandle(part);
-    return (await directory.getFileHandle(name)).getFile();
+    for (const part of sourceParts) directory = await directory.getDirectoryHandle(part);
+    return directory.getFileHandle(name);
+  }
+
+  private async hashFile(file: File): Promise<string | undefined> {
+    const bytes = await file.arrayBuffer();
+    if (globalThis.crypto?.subtle) {
+      const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes);
+      return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+    }
+    let hash = 2166136261;
+    for (const byte of new Uint8Array(bytes)) hash = Math.imul(hash ^ byte, 16777619);
+    return `fnv1a-${(hash >>> 0).toString(16)}`;
   }
 
   private async beginReceive(message: { root: SyncRootKind | null; path: string; size: number; lastModified?: number }): Promise<void> {
@@ -535,7 +793,7 @@ export class P2PSyncService {
       this.send({ type: 'file-skip', root: message.root, path: message.path, reason: 'missing-root' });
       return;
     }
-    const syncRoot = this.roots.get(message.root);
+    let syncRoot = this.roots.get(message.root);
     if (!syncRoot) {
       this.send({ type: 'file-skip', root: message.root, path: message.path, reason: 'missing-root' });
       return;
@@ -545,6 +803,20 @@ export class P2PSyncService {
       return;
     }
     const parts = this.pathParts(message.path);
+    if (message.root === 'player') {
+      const libraryName = parts.shift()!;
+      const matchingRoot = this.mediaRoots.find(item => item.name.toLocaleLowerCase() === libraryName.toLocaleLowerCase());
+      if (matchingRoot) {
+        syncRoot = matchingRoot;
+      } else {
+        const container = this.mediaRoots[0];
+        if (!container) {
+          this.send({ type: 'file-skip', root: message.root, path: message.path, reason: 'missing-root' });
+          return;
+        }
+        syncRoot = { ...container, root: await container.root.getDirectoryHandle(libraryName, { create: true }), name: libraryName };
+      }
+    }
     const name = parts.pop()!;
     let directory = syncRoot.root;
     for (const part of parts) directory = await directory.getDirectoryHandle(part, { create: true });
@@ -620,13 +892,34 @@ export class P2PSyncService {
 
   private waitForBuffer(): Promise<void> {
     const channel = this.channel;
-    if (!channel || channel.bufferedAmount < 4 * 1024 * 1024) return Promise.resolve();
-    return new Promise<void>(resolve => {
-      const onLow = () => {
+    const highWaterMark = 4 * 1024 * 1024;
+    if (!channel || channel.readyState !== 'open') return Promise.reject(new Error('La conexión se cerró durante el envío.'));
+    if (channel.bufferedAmount < highWaterMark) return Promise.resolve();
+    return new Promise<void>((resolve, reject) => {
+      let pollTimer: ReturnType<typeof setInterval> | null = null;
+      const cleanup = () => {
         channel.removeEventListener('bufferedamountlow', onLow);
+        channel.removeEventListener('close', onClose);
+        if (pollTimer) clearInterval(pollTimer);
+      };
+      const onLow = () => {
+        cleanup();
         resolve();
       };
+      const onClose = () => {
+        cleanup();
+        reject(new Error('La conexión se cerró durante el envío.'));
+      };
       channel.addEventListener('bufferedamountlow', onLow);
+      channel.addEventListener('close', onClose);
+      pollTimer = setInterval(() => {
+        if (channel.readyState !== 'open') onClose();
+        else if (channel.bufferedAmount < highWaterMark) onLow();
+      }, 500);
+
+      // Recheck after registering: the buffer can drain before the listener is attached.
+      if (channel.readyState !== 'open') onClose();
+      else if (channel.bufferedAmount < highWaterMark) onLow();
     });
   }
 
@@ -673,12 +966,17 @@ export class P2PSyncService {
 
   private resetSyncState(): void {
     this.remoteFiles = null;
+    this.remoteDeletions = null;
+    this.remoteDeletionsReady = false;
     this.incomingManifest = null;
     this.remoteRoots.clear();
+    this.remoteLibraryNames.set([]);
     this.remoteRootsReady = false;
     this.remotePeerId = '';
     this.localFiles = [];
     this.localMeta.clear();
+    this.localSourcePaths.clear();
+    this.localDeletions.clear();
     this.localReady = false;
     this.planStarted = false;
     this.incoming = null;
@@ -717,6 +1015,7 @@ export class P2PSyncService {
     }
     this.connected.set(false);
     this.role.set('none');
+    this.connectionWasEstablished = false;
     this.disposed = false;
   }
 

@@ -1,4 +1,7 @@
-import { Component, ElementRef, EventEmitter, HostListener, Input, OnInit, Output, ViewChild, model } from '@angular/core';
+import { Component, ElementRef, EventEmitter, HostListener, Input, OnDestroy, OnInit, Output, ViewChild, inject, model } from '@angular/core';
+import { LibraryTreeService } from '../../services/library-tree.service';
+import type { LibraryMediaSource } from '../../services/library-tree.service';
+import { MediaReferenceService } from '../../services/media-reference.service';
 
 @Component({
   selector: 'app-text-plus',
@@ -6,8 +9,11 @@ import { Component, ElementRef, EventEmitter, HostListener, Input, OnInit, Outpu
   templateUrl: './text-plus.component.html',
   styleUrl: './text-plus.component.css'
 })
-export class TextPlusComponent implements OnInit {
+export class TextPlusComponent implements OnInit, OnDestroy {
   @ViewChild('editor') private editor?: ElementRef<HTMLTextAreaElement>;
+  @ViewChild('pergamino') private pergamino?: ElementRef<HTMLDivElement>;
+  private readonly libraryTree = inject(LibraryTreeService);
+  private readonly mediaReferences = inject(MediaReferenceService);
   @Input() bloqueaBackspace = true;
   readonly textoContenido = model<string>('');
   textoArea = '';
@@ -15,9 +21,13 @@ export class TextPlusComponent implements OnInit {
   code = true;
   help = false;
   private textOld = '';
+  private imageRenderGeneration = 0;
+  private readonly referenceImageUrls = new Map<string, string>();
+  referenceMessage = '';
 
   @Output() readonly cerrar = new EventEmitter<void>();
   @Output() readonly aceptar = new EventEmitter<string>();
+  @Output() readonly mediaReference = new EventEmitter<File | LibraryMediaSource>();
 
   constructor(private readonly elementRef: ElementRef<HTMLElement>) {}
 
@@ -36,6 +46,11 @@ export class TextPlusComponent implements OnInit {
   ngOnInit(): void {
     this.textoArea = this.textoContenido() ?? '';
     this.actualizarVistaPergamino();
+  }
+
+  ngOnDestroy(): void {
+    for (const url of this.referenceImageUrls.values()) if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+    this.referenceImageUrls.clear();
   }
 
   guardarYAceptar(): void {
@@ -58,6 +73,56 @@ export class TextPlusComponent implements OnInit {
     this.textoArea = this.textoArea.slice(0, start) + prefijo + seleccionado + sufijo + this.textoArea.slice(end);
     this.actualizarVistaPergamino();
     this.restaurarCursor(start + prefijo.length + seleccionado.length);
+  }
+
+  async insertarReferencia(): Promise<void> {
+    let reference = this.mediaReferences.take();
+    if (!reference) {
+      try { reference = await navigator.clipboard.readText(); }
+      catch { /* El botón Copiar Referencia conserva la última referencia dentro de la app. */ }
+    }
+    if (!/^\[\[media:[^\]]+\]\]$/.test(reference.trim())) {
+      this.referenceMessage = 'Copia primero una referencia desde los detalles de un archivo.';
+      return;
+    }
+    this.referenceMessage = '';
+    this.insertarPrefijo(reference.trim());
+  }
+
+  @HostListener('click', ['$event'])
+  async openMediaReference(event: MouseEvent): Promise<void> {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const button = target.closest<HTMLElement>('.pergamino-media-reference, .pergamino-media-image');
+    const encodedPath = button?.title.startsWith('media-ref:') ? button.title.slice('media-ref:'.length) : undefined;
+    if (!encodedPath) return;
+    event.preventDefault();
+    const segments = encodedPath.split('/');
+    if (segments.length < 2) return;
+    let libraryName: string;
+    let path: string;
+    try {
+      libraryName = decodeURIComponent(segments.shift()!);
+      path = segments.map(segment => decodeURIComponent(segment)).join('/');
+    } catch {
+      this.referenceMessage = 'La referencia del archivo no es válida.';
+      return;
+    }
+    const library = this.libraryTree.libraries().find(item => item.name.toLocaleLowerCase() === libraryName.toLocaleLowerCase());
+    if (!library) {
+      this.referenceMessage = `No se encontró la biblioteca «${libraryName}».`;
+      return;
+    }
+    try {
+      const source = await this.libraryTree.getPlaybackSource(library, {
+        libraryId: library.id, path, parentPath: path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '',
+        name: path.split('/').at(-1)!, kind: 'file', extension: '', mimeType: '', size: 0, lastModified: 0, depth: 0
+      });
+      this.referenceMessage = '';
+      this.mediaReference.emit(source);
+    } catch {
+      this.referenceMessage = `No se pudo abrir «${path.split('/').at(-1)}». Comprueba que el archivo siga en la biblioteca.`;
+    }
   }
 
   insertarTabla(): void {
@@ -85,9 +150,27 @@ export class TextPlusComponent implements OnInit {
   }
 
   private renderTextoInline(texto: string): string {
-    let html = this.escaparHtml(texto);
+    const references: string[] = [];
+    const withReferenceTokens = texto.replace(/\[\[media:([^\]\r\n]+)\]\]/g, (reference, encodedPath: string) => {
+      if (encodedPath.split('/').length < 2) return reference;
+      const token = `CALEVRI_MEDIA_REF_${references.length}_TOKEN`;
+      references.push(encodedPath);
+      return token;
+    });
+    let html = this.escaparHtml(withReferenceTokens);
     html = html.replace(/\*\*(.+?)\*\*/g, '<strong class="destacado-verde">$1</strong>');
-    return html.replace(/\*(.+?)\*/g, '<span class="destacado-azul">$1</span>');
+    html = html.replace(/\*(.+?)\*/g, '<span class="destacado-azul">$1</span>');
+    return html.replace(/CALEVRI_MEDIA_REF_(\d+)_TOKEN/g, (_token, index: string) => {
+      const encodedPath = references[Number(index)];
+      let label = 'Abrir archivo multimedia';
+      try { label = `▶ ${decodeURIComponent(encodedPath.split('/').slice(1).join('/'))}`; }
+      catch { /* Se conserva una etiqueta genérica si la ruta no se puede decodificar. */ }
+      const fileName = label.slice(2).split('/').at(-1) ?? '';
+      if (/\.(png|jpe?g|gif|webp|bmp|svg|avif)$/i.test(fileName)) {
+        return `<button type="button" class="pergamino-media-image" title="media-ref:${this.escaparHtml(encodedPath)}"><img class="pergamino-reference-image" alt="${this.escaparHtml(fileName)}" title="media-ref:${this.escaparHtml(encodedPath)}"></button>`;
+      }
+      return `<button type="button" class="pergamino-media-reference" title="media-ref:${this.escaparHtml(encodedPath)}">${this.escaparHtml(label)}</button>`;
+    });
   }
 
   private renderDirWindow(titulo: string, contenido: string): string {
@@ -202,6 +285,42 @@ export class TextPlusComponent implements OnInit {
     }
     if (listaActual) html += this.renderDirWindow(listaActual.titulo, listaActual.entradas.join(''));
     this.vistaPergamino = html;
+    this.scheduleReferenceImageLoad();
+  }
+
+  private scheduleReferenceImageLoad(): void {
+    const generation = ++this.imageRenderGeneration;
+    setTimeout(() => { void this.loadReferenceImages(generation); });
+  }
+
+  private async loadReferenceImages(generation: number): Promise<void> {
+    if (!this.code) return;
+    const host = this.pergamino?.nativeElement;
+    if (!host) return;
+    const images = [...host.querySelectorAll<HTMLImageElement>('img.pergamino-reference-image')];
+    for (const image of images) {
+      const encodedPath = image.title.startsWith('media-ref:') ? image.title.slice('media-ref:'.length) : '';
+      if (!encodedPath || image.hasAttribute('src')) continue;
+      const cached = this.referenceImageUrls.get(encodedPath);
+      if (cached) { image.src = cached; continue; }
+      const segments = encodedPath.split('/');
+      if (segments.length < 2) continue;
+      try {
+        const libraryName = decodeURIComponent(segments.shift()!);
+        const path = segments.map(segment => decodeURIComponent(segment)).join('/');
+        const library = this.libraryTree.libraries().find(item => item.name.toLocaleLowerCase() === libraryName.toLocaleLowerCase());
+        if (!library) continue;
+        const source = await this.libraryTree.getPlaybackSource(library, {
+          libraryId: library.id, path, parentPath: path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '',
+          name: path.split('/').at(-1)!, kind: 'file', extension: '', mimeType: '', size: 0, lastModified: 0, depth: 0
+        });
+        const url = source instanceof File ? URL.createObjectURL(source) : source.url;
+        this.referenceImageUrls.set(encodedPath, url);
+        if (generation === this.imageRenderGeneration && image.isConnected) image.src = url;
+      } catch {
+        if (generation === this.imageRenderGeneration && image.isConnected) image.alt = `No se pudo cargar ${image.alt}`;
+      }
+    }
   }
 
   convertirPergamino(): void { this.code = true; this.actualizarVistaPergamino(); }

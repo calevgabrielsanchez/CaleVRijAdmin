@@ -19,12 +19,23 @@ export interface LibraryFileHandle {
   size?: number;
   lastModified?: number;
   mimeType?: string;
+  openReader?(): Promise<{ size: number; readChunk(maxBytes: number): Promise<ArrayBuffer | null>; close(): Promise<void> }>;
   getFile(): Promise<File>;
   createWritable(): Promise<{ write(data: string | Blob): Promise<void>; close(): Promise<void> }>;
 }
 
 export interface LibraryPickerWindow extends Window {
   showDirectoryPicker?: (options?: { mode?: 'readwrite' }) => Promise<LibraryDirectoryHandle>;
+}
+
+async function encodeFileChunk(data: string | Blob): Promise<string> {
+  const blob = typeof data === 'string' ? new Blob([data]) : data;
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return btoa(binary);
 }
 
 export interface LibraryMediaSource {
@@ -41,6 +52,7 @@ const ANDROID_LAST_ROOT_STORAGE_KEY = 'calevrij.library-tree.android-last-root.v
 const BROWSER_ROOT_DATABASE = 'calevrij-library-tree';
 const BROWSER_ROOT_STORE = 'roots';
 const BROWSER_LAST_ROOT_KEY = 'last-used';
+const LIBRARY_DELETIONS_FILE = 'library-deletions.json';
 
 class AndroidLibraryFileHandle implements LibraryFileHandle {
   readonly kind = 'file' as const;
@@ -59,24 +71,25 @@ class AndroidLibraryFileHandle implements LibraryFileHandle {
     return new File([bytes], result.name, { type: result.mimeType, lastModified: result.lastModified });
   }
 
-  async createWritable(): Promise<{ write(data: string | Blob): Promise<void>; close(): Promise<void> }> {
-    let content: string | Blob = '';
+  async openReader(): Promise<{ size: number; readChunk(maxBytes: number): Promise<ArrayBuffer | null>; close(): Promise<void> }> {
+    const { readerId, size } = await AndroidDirectoryAccess.openFileReader({ uri: this.uri, path: this.path });
     return {
-      write: async data => { content = data; },
-      close: async () => {
-        const blob = typeof content === 'string' ? new Blob([content]) : content;
-        const bytes = new Uint8Array(await blob.arrayBuffer());
-        let binary = '';
-        for (let offset = 0; offset < bytes.length; offset += 0x8000) {
-          binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
-        }
-        await AndroidDirectoryAccess.writeFile({
-          uri: this.uri,
-          path: this.path,
-          data: btoa(binary),
-          mimeType: blob.type || 'application/octet-stream'
-        });
-      }
+      size,
+      readChunk: async maxBytes => {
+        const result = await AndroidDirectoryAccess.readFileChunk({ readerId, maxBytes });
+        if (result.eof && !result.data) return null;
+        const bytes = Uint8Array.from(atob(result.data), character => character.charCodeAt(0));
+        return bytes.buffer;
+      },
+      close: async () => AndroidDirectoryAccess.closeFileReader({ readerId })
+    };
+  }
+
+  async createWritable(): Promise<{ write(data: string | Blob): Promise<void>; close(): Promise<void> }> {
+    const { writerId } = await AndroidDirectoryAccess.openFileWriter({ uri: this.uri, path: this.path });
+    return {
+      write: async data => AndroidDirectoryAccess.writeFileChunk({ writerId, data: await encodeFileChunk(data) }),
+      close: async () => AndroidDirectoryAccess.closeFileWriter({ writerId })
     };
   }
 }
@@ -84,9 +97,9 @@ class AndroidLibraryFileHandle implements LibraryFileHandle {
 class AndroidLibraryDirectoryHandle implements LibraryDirectoryHandle {
   readonly kind = 'directory' as const;
 
-  constructor(readonly uri: string, private readonly path: string, readonly name: string) {}
+  constructor(readonly uri: string, readonly path: string, readonly name: string) {}
 
-  persistedRoot(): string { return this.uri; }
+  persistedRoot(): string { return JSON.stringify({ uri: this.uri, path: this.path }); }
 
   async prepareForPlayback(path: string): Promise<LibraryMediaSource> {
     const cached = await AndroidDirectoryAccess.getFileUri({ uri: this.uri, path });
@@ -145,6 +158,13 @@ export interface LibraryRecord {
   fileCount: number;
   totalBytes: number;
   cover?: Blob;
+  parentLibraryId?: string;
+}
+
+export interface LibraryDeletion {
+  libraryName: string;
+  path: string;
+  deletedAt: number;
 }
 
 export interface IndexedLibraryNode {
@@ -195,6 +215,7 @@ export class LibraryTreeService {
             this.libraries.set([root]);
             this.lastUsedLibraryId.set(root.id);
             if (!this.browserPermissionRequired()) void this.rescanRestoredRoots([root]);
+            if (!this.browserPermissionRequired()) void this.restoreRegisteredChildRoots(root);
           }
         }
         this.mergeRegistry(this.config.playerLibraries());
@@ -210,7 +231,7 @@ export class LibraryTreeService {
   async addLibraryFromHandle(root: LibraryDirectoryHandle, name?: string): Promise<LibraryRecord> {
     if (root instanceof AndroidLibraryDirectoryHandle) {
       const existing = this.libraries().find(library =>
-        library.root instanceof AndroidLibraryDirectoryHandle && library.root.uri === root.uri
+        library.root instanceof AndroidLibraryDirectoryHandle && library.root.persistedRoot() === root.persistedRoot()
       );
       if (existing) {
         await this.rescan(existing);
@@ -257,10 +278,37 @@ export class LibraryTreeService {
     this.persistRegistry();
   }
 
+  async refreshRoot(root: LibraryDirectoryHandle): Promise<void> {
+    const existing = this.libraries().find(library => library.name === root.name);
+    if (existing) {
+      await this.rescan(existing);
+      return;
+    }
+    await this.addLibraryFromHandle(root);
+  }
+
+  async ensureRemoteLibraries(names: string[], containerName?: string): Promise<void> {
+    const container = this.libraries().find(library => library.name.toLocaleLowerCase() === containerName?.toLocaleLowerCase())
+      ?? this.libraries()[0];
+    if (!container) return;
+    for (const name of names) {
+      if (!name || name.toLocaleLowerCase() === container.name.toLocaleLowerCase()) continue;
+      if (this.libraries().some(library => library.name.toLocaleLowerCase() === name.toLocaleLowerCase())) continue;
+      const root = await container.root.getDirectoryHandle(name, { create: true });
+      const record: LibraryRecord = {
+        id: crypto.randomUUID(), name, root, createdAt: new Date().toISOString(),
+        lastScan: '', folderCount: 0, fileCount: 0, totalBytes: 0, parentLibraryId: container.id
+      };
+      this.libraries.update(items => [...items, record]);
+      this.persistAndroidRoots();
+    }
+    this.persistRegistry();
+  }
+
   async rememberLastUsedLibrary(library: LibraryRecord): Promise<void> {
     this.lastUsedLibraryId.set(library.id);
     if (library.root instanceof AndroidLibraryDirectoryHandle) {
-      try { localStorage.setItem(ANDROID_LAST_ROOT_STORAGE_KEY, library.root.uri); }
+      try { localStorage.setItem(ANDROID_LAST_ROOT_STORAGE_KEY, library.root.persistedRoot()); }
       catch { this.config.message.set('No se pudo recordar la última biblioteca en este dispositivo.'); }
       return;
     }
@@ -335,7 +383,26 @@ export class LibraryTreeService {
     if (!name) return;
     const parent = await this.resolveDirectory(record.root, parts);
     await parent.removeEntry(name);
+    await this.recordDeletion(record, node.path);
     await this.rescan(record);
+  }
+
+  private async recordDeletion(record: LibraryRecord, path: string): Promise<void> {
+    const folder = await record.root.getDirectoryHandle('.calevri', { create: true });
+    const handle = await folder.getFileHandle(LIBRARY_DELETIONS_FILE, { create: true });
+    let deletions: LibraryDeletion[] = [];
+    try {
+      const file = await handle.getFile();
+      const parsed = JSON.parse(await file.text()) as unknown;
+      if (Array.isArray(parsed)) deletions = parsed.filter((item): item is LibraryDeletion =>
+        !!item && typeof item.libraryName === 'string' && typeof item.path === 'string' && typeof item.deletedAt === 'number'
+      );
+    } catch { /* El registro de eliminaciones todavía no existe. */ }
+    deletions = deletions.filter(item => !(item.libraryName === record.name && item.path === path));
+    deletions.push({ libraryName: record.name, path, deletedAt: Date.now() });
+    const writer = await handle.createWritable();
+    await writer.write(JSON.stringify(deletions));
+    await writer.close();
   }
 
   async getFileDetails(record: LibraryRecord, node: IndexedLibraryNode): Promise<Array<{ label: string; value: string }>> {
@@ -403,6 +470,10 @@ export class LibraryTreeService {
   private async scan(record: LibraryRecord): Promise<void> {
     const queue: Array<{ directory: LibraryDirectoryHandle; parentPath: string; depth: number }> = [{ directory: record.root, parentPath: '', depth: 0 }];
     const nodes: IndexedLibraryNode[] = [];
+    const childLibraryNames = new Set(this.libraries()
+      .filter(library => library.id !== record.id)
+      .filter(library => this.isDirectChildLibrary(record, library))
+      .map(library => library.name.toLocaleLowerCase()));
     let folderCount = 0, fileCount = 0, totalBytes = 0, scanned = 0;
     this.progress.set({ libraryId: record.id, scanned: 0, percent: 0, running: true });
     try {
@@ -411,6 +482,8 @@ export class LibraryTreeService {
         const current = queue[queueIndex++];
         for await (const [name, entry] of current.directory.entries()) {
           if (name === '.calevri') continue;
+          if (!current.parentPath && entry.kind === 'directory'
+            && (name.toLocaleLowerCase() === record.name.toLocaleLowerCase() || childLibraryNames.has(name.toLocaleLowerCase()))) continue;
           const path = current.parentPath ? `${current.parentPath}/${name}` : name;
           if (entry.kind === 'directory') {
             folderCount++;
@@ -458,16 +531,30 @@ export class LibraryTreeService {
     }
 
     const roots: LibraryRecord[] = [];
-    for (const uri of persisted) {
+    for (const persistedLocation of persisted) {
+      let uri = persistedLocation;
+      let path = '';
+      try {
+        const parsed = JSON.parse(persistedLocation) as { uri?: unknown; path?: unknown };
+        if (typeof parsed.uri === 'string' && typeof parsed.path === 'string') {
+          uri = parsed.uri;
+          path = parsed.path;
+        }
+      } catch { /* Formato anterior: solo se guardaba el URI raíz. */ }
       let name = 'Biblioteca';
-      try { name = (await AndroidDirectoryAccess.getDirectory({ uri, path: '', create: false })).name; } catch { /* El escaneo avisará si el permiso ya no existe. */ }
+      try { name = (await AndroidDirectoryAccess.getDirectory({ uri, path, create: false })).name; } catch { /* El escaneo avisará si el permiso ya no existe. */ }
       roots.push({
-        id: crypto.randomUUID(), name, root: new AndroidLibraryDirectoryHandle(uri, '', name),
+        id: crypto.randomUUID(), name, root: new AndroidLibraryDirectoryHandle(uri, path, name),
         createdAt: new Date().toISOString(), lastScan: '', folderCount: 0, fileCount: 0, totalBytes: 0
       });
     }
+    for (const child of roots) {
+      const parent = roots.find(candidate => candidate.id !== child.id && this.isDirectChildLibrary(candidate, child));
+      if (parent) child.parentLibraryId = parent.id;
+    }
     this.libraries.set(roots);
-    const lastRoot = roots.find(root => root.root instanceof AndroidLibraryDirectoryHandle && root.root.uri === lastRootUri) ?? roots[0];
+    const lastRoot = roots.find(root => root.root instanceof AndroidLibraryDirectoryHandle
+      && (root.root.persistedRoot() === lastRootUri || (root.root.path === '' && root.root.uri === lastRootUri))) ?? roots[0];
     this.lastUsedLibraryId.set(lastRoot?.id ?? '');
     return roots;
   }
@@ -492,11 +579,36 @@ export class LibraryTreeService {
     }
   }
 
+  private async restoreRegisteredChildRoots(container: LibraryRecord): Promise<void> {
+    for (const item of this.config.playerLibraries()) {
+      if (!item.name || item.name.toLocaleLowerCase() === container.name.toLocaleLowerCase()) continue;
+      if (this.libraries().some(library => library.name.toLocaleLowerCase() === item.name.toLocaleLowerCase())) continue;
+      try {
+        const root = await container.root.getDirectoryHandle(item.name);
+        const record: LibraryRecord = {
+          id: item.id || crypto.randomUUID(), name: item.name, root,
+          createdAt: item.createdAt || new Date().toISOString(), lastScan: '', folderCount: 0, fileCount: 0, totalBytes: 0,
+          parentLibraryId: container.id
+        };
+        this.libraries.update(items => [...items, record]);
+        await this.scan(record);
+      } catch { /* No existe una carpeta multimedia local para este registro. */ }
+    }
+  }
+
   private async rescanRestoredRoots(roots: LibraryRecord[]): Promise<void> {
     for (const root of roots) {
       try { await this.scan(root); }
       catch { this.config.message.set(`No se pudo recuperar el acceso a «${root.name}». Vuelve a seleccionarla en Library Tree.`); }
     }
+  }
+
+  private isDirectChildLibrary(parent: LibraryRecord, child: LibraryRecord): boolean {
+    if (child.parentLibraryId === parent.id) return true;
+    if (!(parent.root instanceof AndroidLibraryDirectoryHandle) || !(child.root instanceof AndroidLibraryDirectoryHandle)) return false;
+    if (parent.root.uri !== child.root.uri) return false;
+    const expectedPath = parent.root.path ? `${parent.root.path}/${child.name}` : child.name;
+    return child.root.path === expectedPath;
   }
 
   private persistAndroidRoots(): void {

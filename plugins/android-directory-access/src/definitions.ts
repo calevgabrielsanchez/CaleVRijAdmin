@@ -38,6 +38,12 @@ export interface NativeDirectoryAccessPlugin {
   setPlaybackAwake(options: { active: boolean }): Promise<void>;
   setMediaNotification(options: MediaNotificationState): Promise<void>;
   addListener(eventName: 'mediaAction', listenerFunc: (event: { action: string; position?: number }) => void): Promise<PluginListenerHandle>;
+  openFileWriter(options: { uri: string; path: string; mimeType?: string }): Promise<{ writerId: string }>;
+  writeFileChunk(options: { writerId: string; data: string }): Promise<void>;
+  closeFileWriter(options: { writerId: string }): Promise<void>;
+  openFileReader(options: { uri: string; path: string }): Promise<{ readerId: string; size: number; lastModified: number }>;
+  readFileChunk(options: { readerId: string; maxBytes: number }): Promise<{ data: string; eof: boolean }>;
+  closeFileReader(options: { readerId: string }): Promise<void>;
   writeFile(options: { uri: string; path: string; data: string; mimeType: string }): Promise<void>;
   deleteEntry(options: { uri: string; path: string }): Promise<void>;
 }

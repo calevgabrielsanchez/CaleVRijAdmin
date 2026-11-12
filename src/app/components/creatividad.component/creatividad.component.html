@@ -274,5 +274,5 @@
 
 
 @if (mostrarTextPlus()) {
-<app-text-plus [(textoContenido)]="textoAEditar" (cerrar)="cerrar()" (aceptar)="aceptar($event)"></app-text-plus>
+<app-text-plus [(textoContenido)]="textoAEditar" (cerrar)="cerrar()" (aceptar)="aceptar($event)" (mediaReference)="openReferencedMedia($event)"></app-text-plus>
 }

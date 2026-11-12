@@ -57,7 +57,10 @@
               <span class="step-number">1</span>
               <h3>Dispositivo A · Crear invitación</h3>
               <p>Crea el código en el dispositivo que inicia la conexión y compártelo con el otro dispositivo.</p>
-              <button type="button" [disabled]="!libraryRoot || sync.syncing() || sync.connected() || sync.role() === 'answerer'" (click)="createInvitation()">Crear código de invitación</button>
+              <button type="button" [disabled]="!libraryRoot || sync.syncing() || sync.connected() || sync.role() === 'answerer' || sync.state() === 'creating-invitation'" (click)="createInvitation()">
+                @if (sync.state() === 'creating-invitation') { <span class="loading-spinner" aria-hidden="true"></span> Trabajando… }
+                @else { Crear código de invitación }
+              </button>
               @if (sync.invitationCode()) {
                 <label for="invitation-code">Código de invitación</label>
                 <textarea id="invitation-code" readonly rows="5">{{ sync.invitationCode() }}</textarea>
@@ -72,7 +75,10 @@
               <p>Pega el código de invitación del dispositivo A y genera el código de respuesta. Este paso debe hacerse en el otro dispositivo, no en el que creó la invitación.</p>
               <label for="invitation-input">Código de invitación recibido</label>
               <textarea id="invitation-input" rows="5" placeholder="Pega aquí el código de invitación…" [value]="invitationInput" (input)="invitationInput = $any($event.target).value"></textarea>
-              <button type="button" [disabled]="!libraryRoot || !invitationInput.trim() || sync.syncing() || sync.connected() || sync.role() === 'offerer'" (click)="generateAnswer()">Generar respuesta</button>
+              <button type="button" [disabled]="!libraryRoot || !invitationInput.trim() || sync.syncing() || sync.connected() || sync.role() === 'offerer' || (sync.role() === 'answerer' && sync.state() === 'waiting-connection')" (click)="generateAnswer()">
+                @if (sync.role() === 'answerer' && sync.state() === 'waiting-connection' && !sync.answerCode()) { <span class="loading-spinner" aria-hidden="true"></span> Trabajando… }
+                @else { Generar respuesta }
+              </button>
               @if (sync.answerCode()) {
                 <label for="answer-code">Código de respuesta</label>
                 <textarea id="answer-code" readonly rows="5">{{ sync.answerCode() }}</textarea>

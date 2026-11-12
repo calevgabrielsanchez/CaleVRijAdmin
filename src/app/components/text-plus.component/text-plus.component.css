@@ -20,3 +20,8 @@ button svg { width: 23px; height: 23px; fill: none; stroke: currentColor; stroke
 .barra-formatos { display: flex; flex: 0 0 auto; flex-wrap: wrap; gap: 4px; max-height: min(20vh, 110px); overflow-y: auto; padding: 0 4px 8px; }
 .barra-formatos button { display: inline-flex; min-width: 38px; min-height: 30px; align-items: center; justify-content: center; padding: 0 8px; border: 1px solid #009dff55; background: #009dff12; color: #d8f3ff; font-size: 12px; font-weight: 600; }
 .barra-formatos button:hover { background: #009dff30; }
+:host ::ng-deep .pergamino .pergamino-media-reference { display: inline-flex; min-height: 30px; align-items: center; gap: 6px; margin: 2px 4px; padding: 5px 10px; border: 1px solid #009dff88; border-radius: 5px; background: #009dff20; color: #83d4ff; cursor: pointer; font: inherit; }
+:host ::ng-deep .pergamino .pergamino-media-reference:hover { background: #009dff45; color: #fff; }
+:host ::ng-deep .pergamino .pergamino-media-image { display: inline-flex; max-width: min(100%, 420px); align-items: center; justify-content: center; margin: 6px 4px; padding: 3px; border: 1px solid #009dff88; border-radius: 6px; background: #16191d; cursor: pointer; }
+:host ::ng-deep .pergamino .pergamino-reference-image { display: block; max-width: 100%; max-height: 360px; border-radius: 3px; object-fit: contain; }
+.reference-message { flex: 0 0 auto; padding: 3px 8px; color: #ffd36a; font-size: 11px; }

@@ -23,7 +23,9 @@
     <button type="button" title="Éxito" aria-label="Insertar mensaje de éxito" (click)="envolverTexto('(!', ')')">Éxito</button>
     <button type="button" title="Default" aria-label="Insertar bloque default" (click)="envolverTexto('(?', ')')">Default</button>
     <button type="button" title="Tabla" aria-label="Insertar tabla" (click)="insertarTabla()">Tabla</button>
+    <button type="button" title="Insertar la referencia copiada desde Library Tree" aria-label="Insertar referencia" (click)="insertarReferencia()">Insertar referencia</button>
   </div>
 }
+@if (referenceMessage) { <span class="reference-message" role="status">{{ referenceMessage }}</span> }
 <textarea #editor class="cuadro-completo" [class.hide]="code" placeholder="Escribe aquí..." [value]="textoArea" (input)="textoArea = $any($event.target).value; actualizarVistaPergamino()"></textarea>
-<div contenteditable="false" class="cuadro-completo pergamino" [class.hide]="!code" [innerHTML]="vistaPergamino"></div>
+<div #pergamino contenteditable="false" class="cuadro-completo pergamino" [class.hide]="!code" [innerHTML]="vistaPergamino"></div>

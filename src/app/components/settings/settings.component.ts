@@ -3,6 +3,7 @@ import { ProjectDirectoryHandle } from '../view-content.component/project-librar
 import { LibraryRecord, LibraryTreeService } from '../../services/library-tree.service';
 import { ConfigService } from '../../services/config.service';
 import { P2PState, P2PSyncService, SyncRoot } from './p2p-sync.service';
+import { CreatividadStorageService } from '../creatividad.component/creatividad-storage.service';
 
 type SettingsPage = 'sync' | 'about';
 
@@ -17,6 +18,7 @@ export class SettingsComponent {
   readonly sync = inject(P2PSyncService);
   readonly libraryTree = inject(LibraryTreeService);
   readonly config = inject(ConfigService);
+  readonly creatividadStorage = inject(CreatividadStorageService);
   readonly menuOpen = signal(false);
   readonly activePage = signal<SettingsPage>('sync');
   readonly copiedLabel = signal('');
@@ -153,18 +155,19 @@ export class SettingsComponent {
 
   private async buildRoots(): Promise<SyncRoot[]> {
     const roots: SyncRoot[] = [];
+    await this.libraryTree.initialize();
     if (this.libraryRoot) {
       roots.push({ kind: 'main', id: 'main', name: this.libraryRoot.name, root: this.libraryRoot });
     }
-    const player = this.playerLibrary();
-    if (player) {
+    for (const player of this.libraryTree.libraries()) {
+      if (this.libraryRoot && player.name.toLocaleLowerCase() === this.libraryRoot.name.toLocaleLowerCase()) continue;
       const root = player.root as ProjectDirectoryHandle;
       try {
         let permission = await root.queryPermission({ mode: 'readwrite' });
         if (permission !== 'granted') permission = await root.requestPermission({ mode: 'readwrite' });
         if (permission !== 'granted') {
           this.playerMessage.set('La biblioteca del reproductor no tiene permiso de escritura. Vuelve a seleccionar su carpeta.');
-          return roots;
+          continue;
         }
       } catch {
         // Algunos almacenes internos no exponen permisos; se intenta sincronizar igualmente.
@@ -176,17 +179,16 @@ export class SettingsComponent {
 
   private async applySyncedData(): Promise<void> {
     await this.libraryTree.refreshFromConfig();
-    const player = this.playerLibrary();
-    let failed = false;
-    if (player) {
-      try {
-        await this.libraryTree.rescan(player);
-      } catch {
-        failed = true;
-        this.playerMessage.set('Se recibieron archivos del reproductor, pero no se pudo releer su carpeta. Vuelve a seleccionarla en este dispositivo.');
-      }
+    await this.libraryTree.ensureRemoteLibraries(this.sync.remoteLibraryNames(), this.sync.mediaContainerName());
+    const libraries = this.libraryTree.libraries();
+    const scanResults = await Promise.allSettled(libraries.map(library => this.libraryTree.rescan(library)));
+    const scanFailed = scanResults.some(result => result.status === 'rejected');
+    this.creatividadStorage.notifySyncedDataChanged();
+    if (scanFailed) {
+      this.playerMessage.set('Se recibieron archivos, pero no se pudo actualizar el índice de una o más bibliotecas en Library Tree.');
+    } else {
+      this.playerMessage.set('Sincronización aplicada: configuración, Library Tree y datos de Creatividad actualizados.');
     }
-    if (!failed) this.playerMessage.set('Sincronización aplicada: configuración y bibliotecas actualizadas.');
   }
 
   private requireRoot(): boolean {

@@ -22,12 +22,17 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 @CapacitorPlugin(name = "AndroidDirectoryAccess")
 public class AndroidDirectoryAccessPlugin extends Plugin {
     private static boolean mediaServiceStarted;
     private PowerManager.WakeLock playbackWakeLock;
     private BroadcastReceiver mediaActionReceiver;
+    private final Map<String, OutputStream> openFileWriters = new ConcurrentHashMap<>();
+    private final Map<String, InputStream> openFileReaders = new ConcurrentHashMap<>();
 
     @Override
     public void load() {
@@ -224,6 +229,124 @@ public class AndroidDirectoryAccessPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void openFileWriter(PluginCall call) {
+        try {
+            String[] parts = splitPath(call.getString("path"));
+            if (parts.length == 0) throw new Exception("Invalid file path");
+            String fileName = parts[parts.length - 1];
+            String parentPath = join(parts, parts.length - 1);
+            DocumentFile parent = resolveDirectory(call.getString("uri"), parentPath, true);
+            DocumentFile file = parent.findFile(fileName);
+            if (file != null && file.isDirectory()) throw new Exception("A folder has the same name");
+            String mimeType = call.getString("mimeType", "application/octet-stream");
+            if ("application/octet-stream".equals(mimeType)) {
+                String extension = MimeTypeMap.getFileExtensionFromUrl(fileName);
+                String inferredType = extension == null ? null : MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension);
+                if (inferredType != null) mimeType = inferredType;
+            }
+            if (file == null) file = parent.createFile(mimeType, fileName);
+            if (file == null) throw new Exception("Could not create file");
+            OutputStream output = getContext().getContentResolver().openOutputStream(file.getUri(), "wt");
+            if (output == null) throw new Exception("Could not open file for writing");
+            String writerId = UUID.randomUUID().toString();
+            openFileWriters.put(writerId, output);
+            JSObject response = new JSObject();
+            response.put("writerId", writerId);
+            call.resolve(response);
+        } catch (Exception error) {
+            call.reject("Could not open the file for writing", error);
+        }
+    }
+
+    @PluginMethod
+    public void writeFileChunk(PluginCall call) {
+        String writerId = call.getString("writerId");
+        OutputStream output = openFileWriters.get(writerId);
+        if (output == null) {
+            call.reject("The file writer is not open");
+            return;
+        }
+        try {
+            byte[] bytes = Base64.decode(call.getString("data", ""), Base64.DEFAULT);
+            synchronized (output) { output.write(bytes); }
+            call.resolve();
+        } catch (Exception error) {
+            call.reject("Could not write the file chunk", error);
+        }
+    }
+
+    @PluginMethod
+    public void closeFileWriter(PluginCall call) {
+        OutputStream output = openFileWriters.remove(call.getString("writerId"));
+        if (output == null) {
+            call.resolve();
+            return;
+        }
+        try {
+            synchronized (output) { output.close(); }
+            call.resolve();
+        } catch (Exception error) {
+            call.reject("Could not close the file writer", error);
+        }
+    }
+
+    @PluginMethod
+    public void openFileReader(PluginCall call) {
+        try {
+            DocumentFile file = resolveFile(call.getString("uri"), call.getString("path"));
+            if (file == null || !file.isFile()) throw new Exception("File not found");
+            InputStream input = getContext().getContentResolver().openInputStream(file.getUri());
+            if (input == null) throw new Exception("Could not open file for reading");
+            String readerId = UUID.randomUUID().toString();
+            openFileReaders.put(readerId, input);
+            JSObject response = new JSObject();
+            response.put("readerId", readerId);
+            response.put("size", file.length());
+            response.put("lastModified", file.lastModified());
+            call.resolve(response);
+        } catch (Exception error) {
+            call.reject("Could not open the file for reading", error);
+        }
+    }
+
+    @PluginMethod
+    public void readFileChunk(PluginCall call) {
+        String readerId = call.getString("readerId");
+        InputStream input = openFileReaders.get(readerId);
+        if (input == null) {
+            call.reject("The file reader is not open");
+            return;
+        }
+        try {
+            int maxBytes = Math.max(1, Math.min(1024 * 1024, call.getInt("maxBytes", 64 * 1024)));
+            byte[] buffer = new byte[maxBytes];
+            int count;
+            synchronized (input) { count = input.read(buffer); }
+            JSObject response = new JSObject();
+            response.put("data", count > 0 ? Base64.encodeToString(buffer, 0, count, Base64.NO_WRAP) : "");
+            response.put("eof", count < 0);
+            call.resolve(response);
+        } catch (Exception error) {
+            call.reject("Could not read the next file chunk", error);
+        }
+    }
+
+    @PluginMethod
+    public void closeFileReader(PluginCall call) {
+        InputStream input = openFileReaders.remove(call.getString("readerId"));
+        if (input == null) {
+            call.resolve();
+            return;
+        }
+        try {
+            synchronized (input) { input.close(); }
+            call.resolve();
+        } catch (Exception error) {
+            call.reject("Could not close the file reader", error);
+        }
+    }
+
+    @PluginMethod
     public void deleteEntry(PluginCall call) {
         try {
             String[] parts = splitPath(call.getString("path"));
@@ -293,6 +416,14 @@ public class AndroidDirectoryAccessPlugin extends Plugin {
     @Override
     protected void handleOnDestroy() {
         releasePlaybackWakeLock();
+        for (String writerId : openFileWriters.keySet()) {
+            OutputStream output = openFileWriters.remove(writerId);
+            if (output != null) try { output.close(); } catch (Exception ignored) {}
+        }
+        for (String readerId : openFileReaders.keySet()) {
+            InputStream input = openFileReaders.remove(readerId);
+            if (input != null) try { input.close(); } catch (Exception ignored) {}
+        }
         if (mediaActionReceiver != null) {
             try { getContext().unregisterReceiver(mediaActionReceiver); } catch (IllegalArgumentException ignored) {}
             mediaActionReceiver = null;

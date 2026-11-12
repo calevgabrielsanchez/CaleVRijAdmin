@@ -2,6 +2,7 @@ import { Component, EventEmitter, Output, computed, inject, signal } from '@angu
 import { DatePipe } from '@angular/common';
 import { IndexedLibraryNode, LibraryRecord, LibraryTreeService } from '../../services/library-tree.service';
 import type { LibraryMediaSource } from '../../services/library-tree.service';
+import { MediaReferenceService } from '../../services/media-reference.service';
 
 @Component({
   selector: 'app-library-tree',
@@ -14,6 +15,10 @@ export class LibraryTreeComponent {
   @Output() readonly fileSelected = new EventEmitter<File | LibraryMediaSource>();
 
   readonly service = inject(LibraryTreeService);
+  private readonly mediaReferences = inject(MediaReferenceService);
+  readonly sidebarLibraries = computed(() => [...this.service.libraries()].sort((a, b) =>
+    Number(!!b.parentLibraryId) - Number(!!a.parentLibraryId)
+  ));
   readonly selectedId = signal('');
   readonly search = signal('');
   readonly expandedPaths = signal<Set<string>>(new Set(['']));
@@ -43,7 +48,7 @@ export class LibraryTreeComponent {
   constructor() {
     void this.service.initialize().then(() => {
       const remembered = this.service.libraries().find(library => library.id === this.service.lastUsedLibraryId());
-      const initial = remembered ?? this.service.libraries()[0];
+      const initial = remembered ?? this.sidebarLibraries()[0] ?? this.service.libraries()[0];
       if (initial) {
         this.selectedId.set(initial.id);
         void this.service.rememberLastUsedLibrary(initial);
@@ -158,6 +163,20 @@ export class LibraryTreeComponent {
       this.fileDetails.set(await this.service.getFileDetails(library, node));
       this.fileDetailsOpen.set(true);
     } catch { this.message.set(`No se pudieron leer los detalles de «${node.name}».`); }
+  }
+
+  async copyFileReference(node: IndexedLibraryNode): Promise<void> {
+    const library = this.service.libraries().find(item => item.id === node.libraryId);
+    if (!library) return;
+    const encodedPath = [library.name, ...node.path.split('/')].map(part => encodeURIComponent(part)).join('/');
+    const reference = `[[media:${encodedPath}]]`;
+    this.mediaReferences.set(reference);
+    try {
+      await navigator.clipboard.writeText(reference);
+      this.message.set(`Referencia copiada: ${reference}. Pégala en TextPlus con «Insertar referencia».`);
+    } catch {
+      this.message.set(`Referencia lista para TextPlus: ${reference}. Usa «Insertar referencia» para añadirla.`);
+    }
   }
 
   async deleteFile(node: IndexedLibraryNode): Promise<void> {

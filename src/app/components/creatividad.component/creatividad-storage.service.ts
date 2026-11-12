@@ -1,11 +1,16 @@
-import { Injectable } from '@angular/core';
+import { Injectable, signal } from '@angular/core';
 import { ProjectDirectoryHandle } from '../view-content.component/project-library-manager.component';
 import { CreatividadData, EMPTY_CREATIVIDAD_DATA } from './creatividad.models';
 
 @Injectable({ providedIn: 'root' })
 export class CreatividadStorageService {
+  readonly syncRefreshVersion = signal(0);
   private readonly folderName = '.calevri';
   private readonly fileName = 'creatividad.json';
+
+  notifySyncedDataChanged(): void {
+    this.syncRefreshVersion.update(version => version + 1);
+  }
 
   async load(root: ProjectDirectoryHandle): Promise<CreatividadData> {
     let folder: ProjectDirectoryHandle;

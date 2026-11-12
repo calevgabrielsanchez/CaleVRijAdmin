@@ -187,6 +187,11 @@ export class AppComponent {
     this.activeKey.set('reproductor');
   }
 
+  playReferencedMedia(file: File | LibraryMediaSource): void {
+    this.textPlusOpen.set(false);
+    this.playLibraryFile(file);
+  }
+
   setCurrentPlayerFileName(name: string): void {
     this.currentPlayerFileName.set(name);
   }

@@ -1,9 +1,16 @@
-import { Component, ElementRef, EventEmitter, Input, OnChanges, OnInit, Output, SimpleChanges, ViewChild, signal } from '@angular/core';
+import { Component, ElementRef, EventEmitter, Input, OnChanges, OnInit, Output, SimpleChanges, ViewChild, effect, inject, signal } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
 import { AndroidDirectoryAccess } from '@calevrij/admin-android-directory-access';
+import { P2PSyncService } from '../settings/p2p-sync.service';
+import * as XLSX from 'xlsx';
+import { SheetData } from '../spreadsheet-section.component/spreadsheet-section.component';
 
 export interface ProjectFileHandle {
   kind: 'file';
+  size?: number;
+  lastModified?: number;
+  mimeType?: string;
+  openReader?(): Promise<{ size: number; readChunk(maxBytes: number): Promise<ArrayBuffer | null>; close(): Promise<void> }>;
   getFile(): Promise<File>;
   createWritable(): Promise<{ write(data: string | Blob): Promise<void>; close(): Promise<void> }>;
 }
@@ -19,10 +26,26 @@ export interface ProjectDirectoryHandle {
   requestPermission(options: { mode: 'readwrite' }): Promise<PermissionState>;
 }
 
+async function encodeFileChunk(data: string | Blob): Promise<string> {
+  const blob = typeof data === 'string' ? new Blob([data]) : data;
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return btoa(binary);
+}
+
 class AndroidProjectFileHandle implements ProjectFileHandle {
   readonly kind = 'file' as const;
 
-  constructor(private readonly uri: string, private readonly path: string) {}
+  constructor(
+    private readonly uri: string,
+    private readonly path: string,
+    readonly size?: number,
+    readonly lastModified?: number,
+    readonly mimeType?: string
+  ) {}
 
   async getFile(): Promise<File> {
     const result = await AndroidDirectoryAccess.readFile({ uri: this.uri, path: this.path });
@@ -31,24 +54,25 @@ class AndroidProjectFileHandle implements ProjectFileHandle {
     return new File([bytes], result.name, { type: result.mimeType, lastModified: result.lastModified });
   }
 
-  async createWritable(): Promise<{ write(data: string | Blob): Promise<void>; close(): Promise<void> }> {
-    let content: string | Blob = '';
+  async openReader(): Promise<{ size: number; readChunk(maxBytes: number): Promise<ArrayBuffer | null>; close(): Promise<void> }> {
+    const { readerId, size } = await AndroidDirectoryAccess.openFileReader({ uri: this.uri, path: this.path });
     return {
-      write: async data => { content = data; },
-      close: async () => {
-        const blob = typeof content === 'string' ? new Blob([content]) : content;
-        const bytes = new Uint8Array(await blob.arrayBuffer());
-        let binary = '';
-        for (let offset = 0; offset < bytes.length; offset += 0x8000) {
-          binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
-        }
-        await AndroidDirectoryAccess.writeFile({
-          uri: this.uri,
-          path: this.path,
-          data: btoa(binary),
-          mimeType: blob.type || 'application/octet-stream'
-        });
-      }
+      size,
+      readChunk: async maxBytes => {
+        const result = await AndroidDirectoryAccess.readFileChunk({ readerId, maxBytes });
+        if (result.eof && !result.data) return null;
+        const bytes = Uint8Array.from(atob(result.data), character => character.charCodeAt(0));
+        return bytes.buffer;
+      },
+      close: async () => AndroidDirectoryAccess.closeFileReader({ readerId })
+    };
+  }
+
+  async createWritable(): Promise<{ write(data: string | Blob): Promise<void>; close(): Promise<void> }> {
+    const { writerId } = await AndroidDirectoryAccess.openFileWriter({ uri: this.uri, path: this.path });
+    return {
+      write: async data => AndroidDirectoryAccess.writeFileChunk({ writerId, data: await encodeFileChunk(data) }),
+      close: async () => AndroidDirectoryAccess.closeFileWriter({ writerId })
     };
   }
 }
@@ -64,7 +88,7 @@ class AndroidProjectDirectoryHandle implements ProjectDirectoryHandle {
       const path = this.path ? `${this.path}/${entry.name}` : entry.name;
       const handle = entry.kind === 'directory'
         ? new AndroidProjectDirectoryHandle(this.uri, path, entry.name)
-        : new AndroidProjectFileHandle(this.uri, path);
+        : new AndroidProjectFileHandle(this.uri, path, entry.size, entry.lastModified, entry.mimeType);
       yield [entry.name, handle];
     }
   }
@@ -97,6 +121,10 @@ interface DirectoryPickerWindow extends Window {
   showDirectoryPicker?: (options?: { mode?: 'readwrite' }) => Promise<ProjectDirectoryHandle>;
 }
 
+interface SaveFilePickerWindow extends Window {
+  showSaveFilePicker?: (options?: { suggestedName?: string; types?: Array<{ description: string; accept: Record<string, string[]> }> }) => Promise<{ createWritable(): Promise<{ write(data: Blob): Promise<void>; close(): Promise<void> }> }>;
+}
+
 export type ProjectNodeLevel = 'biblioteca' | 'estante' | 'tema' | 'libro';
 export interface ProjectLibraryNode {
   name: string;
@@ -126,6 +154,7 @@ const PROJECT_LAST_ROOT_KEY = 'last-used';
   }
 })
 export class ProjectLibraryManagerComponent implements OnChanges, OnInit {
+  private readonly sync = inject(P2PSyncService);
   @ViewChild('rootPicker') private rootPicker?: ElementRef<HTMLInputElement>;
   @Input() active = false;
   @Output() readonly bookSelected = new EventEmitter<ProjectLibraryNode | null>();
@@ -151,7 +180,13 @@ export class ProjectLibraryManagerComponent implements OnChanges, OnInit {
   readonly rootPermissionRequired = signal(false);
   private pendingBrowserRoot: ProjectDirectoryHandle | null = null;
 
-  constructor() {}
+  constructor() {
+    effect(() => {
+      const completed = this.sync.state() === 'completed';
+      const root = this.rootHandle();
+      if (completed && root) void this.refreshTree();
+    });
+  }
 
   ngOnInit(): void { void this.restoreLastRoot(); }
 
@@ -197,6 +232,135 @@ export class ProjectLibraryManagerComponent implements OnChanges, OnInit {
   deleteNodeFromMenu(node: ProjectLibraryNode): void {
     this.closeNodeMenu();
     void this.deleteNode(node, node.parent);
+  }
+
+  async exportBookToExcel(book: ProjectLibraryNode): Promise<void> {
+    this.closeNodeMenu();
+    this.statusMessage.set(`Preparando «${book.name}» para exportar…`);
+    try {
+      const sheets: SheetData[] = [];
+      for await (const [name, entry] of book.handle.entries()) {
+        if (entry.kind !== 'directory') continue;
+        try {
+          const file = await (await entry.getFileHandle('hoja.json')).getFile();
+          const data = JSON.parse(await file.text()) as Partial<SheetData>;
+          sheets.push({
+            name: typeof data.name === 'string' && data.name.trim() ? data.name : name,
+            details: typeof data.details === 'string' ? data.details : '',
+            cells: data.cells ?? {},
+            extraTexts: data.extraTexts ?? {},
+            formats: data.formats ?? {},
+            merges: data.merges ?? {},
+            columnWidths: data.columnWidths ?? {},
+            rowHeights: data.rowHeights ?? {}
+          });
+        } catch {
+          if (/^Hoja\s+\d+$/i.test(name)) {
+            sheets.push({ name, cells: {}, extraTexts: {}, formats: {}, merges: {}, columnWidths: {}, rowHeights: {} });
+          }
+        }
+      }
+      sheets.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+      if (!sheets.length) sheets.push({ name: 'Hoja 1', cells: {}, extraTexts: {}, formats: {}, merges: {}, columnWidths: {}, rowHeights: {} });
+
+      const workbook = XLSX.utils.book_new();
+      const usedNames = new Set<string>();
+      for (const sheet of sheets) {
+        const coordinates = [...Object.keys(sheet.cells), ...Object.keys(sheet.extraTexts)]
+          .map(key => /^(\d+):(\d+)$/.exec(key))
+          .filter((match): match is RegExpExecArray => !!match)
+          .map(match => [Number(match[1]), Number(match[2])] as [number, number]);
+        const maxRow = Math.max(0, ...coordinates.map(([row]) => row));
+        const maxCol = Math.max(0, ...coordinates.map(([, col]) => col));
+        const rows: string[][] = Array.from({ length: maxRow + 1 }, () => Array(maxCol + 1).fill(''));
+        for (const [key, value] of Object.entries(sheet.cells)) {
+          const match = /^(\d+):(\d+)$/.exec(key);
+          if (match) rows[Number(match[1])][Number(match[2])] = value ?? '';
+        }
+        const worksheet = XLSX.utils.aoa_to_sheet(rows);
+        for (const [key, text] of Object.entries(sheet.extraTexts)) {
+          if (!text) continue;
+          const match = /^(\d+):(\d+)$/.exec(key);
+          if (!match) continue;
+          const address = XLSX.utils.encode_cell({ r: Number(match[1]), c: Number(match[2]) });
+          const cell = worksheet[address] ?? (worksheet[address] = { t: 's', v: '' });
+          (cell as XLSX.CellObject).c = [{ a: 'CaleVRijAdmin', t: text }];
+        }
+        worksheet['!merges'] = Object.entries(sheet.merges).flatMap(([key, range]) => {
+          const match = /^(\d+):(\d+)$/.exec(key);
+          return match ? [{ s: { r: Number(match[1]), c: Number(match[2]) }, e: { r: range.endRow, c: range.endCol } }] : [];
+        });
+        let safeName = (sheet.name.replace(/[\\/?*\[\]:]/g, ' ').trim() || 'Hoja').slice(0, 31);
+        const baseName = safeName;
+        let suffix = 2;
+        while (usedNames.has(safeName.toLocaleLowerCase())) {
+          const ending = ` (${suffix++})`;
+          safeName = `${baseName.slice(0, 31 - ending.length)}${ending}`;
+        }
+        usedNames.add(safeName.toLocaleLowerCase());
+        XLSX.utils.book_append_sheet(workbook, worksheet, safeName);
+      }
+
+      const output = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+      const exportName = `${book.name.replace(/[\\/:*?"<>|]/g, '_')}.xlsx`;
+      const blob = new Blob([output], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const savedAt = await this.saveExportFile(exportName, blob);
+      if (savedAt) this.statusMessage.set(`Libro exportado: ${savedAt}.`);
+      else this.statusMessage.set('Exportación cancelada.');
+    } catch (error) {
+      if ((error as { name?: string })?.name === 'AbortError' || (error as { code?: string })?.code === 'USER_CANCELLED') {
+        this.statusMessage.set('Exportación cancelada.');
+        return;
+      }
+      this.statusMessage.set(error instanceof Error ? `No se pudo exportar «${book.name}»: ${error.message}` : `No se pudo exportar «${book.name}».`);
+    }
+  }
+
+  private async saveExportFile(fileName: string, blob: Blob): Promise<string | null> {
+    if (Capacitor.getPlatform() === 'android') {
+      const selected = await AndroidDirectoryAccess.pickDirectory();
+      const directory = new AndroidProjectDirectoryHandle(selected.uri, '', selected.name);
+      await this.writeExportToDirectory(directory, fileName, blob);
+      return `${selected.name}/${fileName}`;
+    }
+
+    const pickerWindow = window as SaveFilePickerWindow;
+    if (pickerWindow.showSaveFilePicker) {
+      const file = await pickerWindow.showSaveFilePicker({
+        suggestedName: fileName,
+        types: [{ description: 'Libro de Excel', accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] } }]
+      });
+      const writer = await file.createWritable();
+      try { await writer.write(blob); }
+      finally { await writer.close(); }
+      return fileName;
+    }
+
+    const directoryPicker = (window as DirectoryPickerWindow).showDirectoryPicker;
+    if (directoryPicker) {
+      const directory = await directoryPicker.call(window, { mode: 'readwrite' });
+      const permission = await directory.queryPermission({ mode: 'readwrite' });
+      if (permission !== 'granted' && await directory.requestPermission({ mode: 'readwrite' }) !== 'granted') {
+        throw new Error('Se requiere permiso de escritura en la carpeta seleccionada.');
+      }
+      await this.writeExportToDirectory(directory, fileName, blob);
+      return `${directory.name}/${fileName}`;
+    }
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return fileName;
+  }
+
+  private async writeExportToDirectory(directory: ProjectDirectoryHandle, fileName: string, blob: Blob): Promise<void> {
+    const file = await directory.getFileHandle(fileName, { create: true });
+    const writer = await file.createWritable();
+    try { await writer.write(blob); }
+    finally { await writer.close(); }
   }
 
   async selectRoot(): Promise<void> {

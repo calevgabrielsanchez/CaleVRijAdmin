@@ -14,6 +14,7 @@
 .menu-icon.add { background: #83df93; color: #14552a; }
 .menu-icon.edit { background: #e5a4d6; color: #49234a; }
 .menu-icon.image { background: #f1f500; color: #494900; }
+.menu-icon.export { background: #b8e3b8; color: #185b2b; }
 .menu-icon.remove { background: #ff2020; color: #681111; }
 .menu-icon svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .tree-action { display: grid; flex: 0 0 31px; width: 31px; height: 34px; place-items: center; border: 1px solid #222; color: #111; cursor: pointer; }.tree-action.add { background: #83df93; color: #14552a; }.tree-action.remove { background: #ff2020; color: #681111; }.tree-action.edit { background: #e5a4d6; color: #49234a; }.tree-action.image { background: #f1f500; color: #494900; }.tree-action svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
