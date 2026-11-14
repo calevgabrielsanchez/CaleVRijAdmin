@@ -1,11 +1,11 @@
-import { Component, Input, computed, effect, inject, signal } from '@angular/core';
+import { Component, ElementRef, Input, OnDestroy, ViewChild, computed, effect, inject, signal } from '@angular/core';
 import { ProjectDirectoryHandle } from '../view-content.component/project-library-manager.component';
 import { LibraryRecord, LibraryTreeService } from '../../services/library-tree.service';
 import { ConfigService } from '../../services/config.service';
 import { P2PState, P2PSyncService, SyncRoot } from './p2p-sync.service';
 import { CreatividadStorageService } from '../creatividad.component/creatividad-storage.service';
 
-type SettingsPage = 'sync' | 'about';
+type SettingsPage = 'sync' | 'qr' | 'about';
 
 @Component({
   selector: 'app-settings',
@@ -13,7 +13,8 @@ type SettingsPage = 'sync' | 'about';
   templateUrl: './settings.component.html',
   styleUrl: './settings.component.css'
 })
-export class SettingsComponent {
+export class SettingsComponent implements OnDestroy {
+  @ViewChild('qrVideo') private qrVideo?: ElementRef<HTMLVideoElement>;
   @Input() libraryRoot: ProjectDirectoryHandle | null = null;
   readonly sync = inject(P2PSyncService);
   readonly libraryTree = inject(LibraryTreeService);
@@ -23,6 +24,11 @@ export class SettingsComponent {
   readonly activePage = signal<SettingsPage>('sync');
   readonly copiedLabel = signal('');
   readonly playerMessage = signal('');
+  readonly invitationQr = signal('');
+  readonly answerQr = signal('');
+  readonly scanningQr = signal(false);
+  readonly qrMessage = signal('');
+  private qrControls?: { stop(): void };
   readonly playerLibrary = computed<LibraryRecord | null>(() => this.libraryTree.primaryLibrary());
   invitationInput = '';
   answerInput = '';
@@ -34,17 +40,70 @@ export class SettingsComponent {
       if (this.sync.state() !== 'completed') return;
       void this.applySyncedData();
     });
+    effect(() => {
+      const invitation = this.sync.invitationCode();
+      const answer = this.sync.answerCode();
+      if (invitation) void import('qrcode').then(({ default: QRCode }) => QRCode.toDataURL(invitation, { errorCorrectionLevel: 'L', margin: 2, width: 320 })).then(url => this.invitationQr.set(url)).catch(() => this.qrMessage.set('No se pudo generar el QR de invitación.'));
+      else this.invitationQr.set('');
+      if (answer) void import('qrcode').then(({ default: QRCode }) => QRCode.toDataURL(answer, { errorCorrectionLevel: 'L', margin: 2, width: 320 })).then(url => this.answerQr.set(url)).catch(() => this.qrMessage.set('No se pudo generar el QR de respuesta.'));
+      else this.answerQr.set('');
+    });
   }
 
   get pageTitle(): string {
-    return this.activePage() === 'sync' ? 'Sincronización P2P' : 'Acerca de';
+    return this.activePage() === 'sync' ? 'Sincronización P2P' : this.activePage() === 'qr' ? 'Sincronización por QR' : 'Acerca de';
   }
 
   toggleMenu(): void { this.menuOpen.update(open => !open); }
 
   selectPage(page: SettingsPage): void {
+    this.stopQrScanner();
     this.activePage.set(page);
     this.menuOpen.set(false);
+  }
+
+  async startQrScanner(): Promise<void> {
+    this.qrMessage.set('');
+    if (!this.qrVideo) { this.qrMessage.set('No se pudo iniciar la cámara.'); return; }
+    try {
+      this.stopQrScanner();
+      const { BrowserQRCodeReader } = await import('@zxing/browser');
+      const reader = new BrowserQRCodeReader();
+      this.scanningQr.set(true);
+      this.qrControls = await reader.decodeFromVideoDevice(undefined, this.qrVideo.nativeElement, async result => {
+        if (!result || !this.scanningQr()) return;
+        const code = result.getText();
+        this.stopQrScanner();
+        await this.handleScannedQr(code);
+      });
+    } catch (error) {
+      this.stopQrScanner();
+      this.qrMessage.set(error instanceof Error ? `No se pudo acceder a la cámara: ${error.message}` : 'No se pudo acceder a la cámara. Comprueba los permisos.');
+    }
+  }
+
+  stopQrScanner(): void {
+    this.scanningQr.set(false);
+    this.qrControls?.stop();
+    this.qrControls = undefined;
+  }
+
+  ngOnDestroy(): void { this.stopQrScanner(); }
+
+  private async handleScannedQr(code: string): Promise<void> {
+    try {
+      await this.config.flush();
+      if (this.sync.role() === 'offerer') {
+        await this.sync.acceptAnswer(code);
+        this.qrMessage.set('Respuesta QR recibida. Conectando y sincronizando…');
+      } else {
+        if (!this.requireRoot()) return;
+        await this.sync.acceptInvitation(await this.buildRoots(), code);
+        this.qrMessage.set('Invitación recibida. Muestra el QR de respuesta al otro dispositivo.');
+      }
+    } catch (error) {
+      this.qrMessage.set(error instanceof Error ? error.message : 'No se pudo procesar el código QR.');
+    }
   }
 
   async createInvitation(): Promise<void> {

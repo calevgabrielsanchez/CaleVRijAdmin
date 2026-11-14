@@ -9,6 +9,7 @@
       <nav class="settings-menu" aria-label="Menú de Settings">
         <h3>Menú de Settings</h3>
         <button type="button" [class.selected]="activePage() === 'sync'" (click)="selectPage('sync')">Sincronización P2P</button>
+        <button type="button" [class.selected]="activePage() === 'qr'" (click)="selectPage('qr')">Sincronización por QR</button>
         <button type="button" [class.selected]="activePage() === 'about'" (click)="selectPage('about')">Acerca de</button>
       </nav>
     </div>
@@ -130,6 +131,32 @@
             <p class="about-version">Versión <strong>v1.0.0</strong> · Angular y Capacitor.</p>
           </div>
         </article>
+      }
+      @case ('qr') {
+        <div class="sync-layout qr-layout">
+          <article class="settings-card intro-card">
+            <div class="drive-heading"><span class="drive-icon" aria-hidden="true">▦</span><div><h3>Emparejar dispositivos con QR</h3><p>El primer dispositivo crea una invitación QR. El segundo la escanea y muestra la respuesta QR; escanéala con el primer dispositivo para iniciar la sincronización.</p></div></div>
+            <p class="settings-help">Se requiere cámara y permiso de lectura. Ambos dispositivos deben tener seleccionada su carpeta raíz. Los QR solo sirven para esta sesión.</p>
+            <p class="root-status">{{ libraryRoot ? 'Biblioteca principal lista: ' + libraryRoot.name : 'Selecciona primero la carpeta raíz de la biblioteca.' }}</p>
+            @if (qrMessage()) { <p class="settings-alert" role="status">{{ qrMessage() }}</p> }
+          </article>
+
+          <article class="settings-card qr-card">
+            <h3>1 · Crear o escanear</h3>
+            @if (!sync.invitationCode() && sync.role() !== 'answerer') {
+              <button type="button" [disabled]="!libraryRoot || sync.syncing() || sync.connected() || sync.state() === 'creating-invitation'" (click)="createInvitation()">Crear invitación QR</button>
+            }
+            @if (invitationQr()) { <div class="qr-code"><img [src]="invitationQr()" alt="Código QR de invitación"><span>Escanea este QR desde el otro dispositivo.</span></div> }
+            @if (answerQr()) { <div class="qr-code"><img [src]="answerQr()" alt="Código QR de respuesta"><span>Escanea este QR desde el dispositivo que creó la invitación.</span></div> }
+            @if (!invitationQr() && !answerQr()) { <p class="settings-help">Al escanear se detectará automáticamente si es una invitación o una respuesta.</p> }
+            <video #qrVideo class="qr-video" [hidden]="!scanningQr()" muted playsinline aria-label="Vista de cámara para escanear QR"></video>
+            <div class="qr-actions">
+              @if (scanningQr()) { <button type="button" class="secondary-button" (click)="stopQrScanner()">Detener cámara</button> }
+              @else if (!sync.connected() && !(sync.role() === 'answerer' && sync.answerCode())) { <button type="button" [disabled]="!libraryRoot || sync.syncing()" (click)="startQrScanner()">{{ sync.role() === 'offerer' ? 'Escanear respuesta QR' : 'Escanear invitación QR' }}</button> }
+            </div>
+            <p class="status-message">{{ sync.message() || 'Sin conexión iniciada.' }}</p>
+          </article>
+        </div>
       }
     }
   </main>

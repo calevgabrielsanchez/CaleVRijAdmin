@@ -40,6 +40,7 @@ export class AppComponent {
   private readonly sync = inject(P2PSyncService);
   readonly loadingMessage = computed(() => {
     if (this.sync.syncing()) return 'Sincronizando bibliotecas…';
+    if (this.bookLoading()) return `Cargando libro «${this.loadingBookName()}»…`;
     const scan = this.libraryTree.progress();
     if (scan?.running) return `Cargando biblioteca… ${scan.scanned} elementos (${scan.percent}%)`;
     return '';
@@ -75,6 +76,9 @@ export class AppComponent {
   readonly sheets = signal<SheetData[]>([{ name: 'Hoja 1', cells: {}, extraTexts: {}, formats: {}, merges: {}, columnWidths: {}, rowHeights: {} }]);
   readonly currentSheetIndex = signal(0);
   readonly currentBook = signal<TreeNode | null>(null);
+  readonly bookLoading = signal(false);
+  readonly loadingBookName = signal('');
+  private bookOpenRequest = 0;
   readonly projectLibraryRoot = signal<DirectoryHandle | null>(null);
   readonly selectionAnchor = signal<[number, number]>([0, 0]);
   readonly selectionEnd = signal<[number, number]>([0, 0]);
@@ -413,10 +417,13 @@ export class AppComponent {
   }
 
   async openBook(book: TreeNode): Promise<void> {
-    await this.flushWorkbookSave();
-    this.currentBook.set(book);
-    this.actionMessage.set('');
+    const request = ++this.bookOpenRequest;
+    this.bookLoading.set(true);
+    this.loadingBookName.set(book.name);
+    let previousSaveFailed = false;
     try {
+      try { await this.flushWorkbookSave(); }
+      catch { previousSaveFailed = true; }
       const loaded: SheetData[] = [];
       for await (const [name, entry] of book.handle.entries()) {
         if (entry.kind !== 'directory') continue;
@@ -454,13 +461,22 @@ export class AppComponent {
         const savedIndex = loaded.findIndex(sheet => sheet.name === parsed.activeSheet);
         if (savedIndex >= 0) savedSheetIndex = savedIndex;
       } catch { /* Libro creado antes de guardar la hoja activa. */ }
+      if (request !== this.bookOpenRequest) return;
+      this.currentBook.set(book);
+      this.actionMessage.set(previousSaveFailed ? 'No se pudieron guardar los cambios del libro anterior.' : '');
       this.currentSheetIndex.set(savedSheetIndex);
       this.selectionAnchor.set([0, 0]);
       this.selectionEnd.set([0, 0]);
       this.activeKey.set('libro');
-      await this.persistWorkbook(book, loaded, savedSheetIndex);
+      try { await this.persistWorkbook(book, loaded, savedSheetIndex); }
+      catch { this.actionMessage.set(`El libro «${book.name}» se abrió, pero no se pudieron guardar sus cambios.`); }
     } catch {
-      this.actionMessage.set(`No se pudo abrir el libro «${book.name}».`);
+      if (request === this.bookOpenRequest) this.actionMessage.set(`No se pudo abrir el libro «${book.name}».`);
+    } finally {
+      if (request === this.bookOpenRequest) {
+        this.bookLoading.set(false);
+        this.loadingBookName.set('');
+      }
     }
   }
 

@@ -38,6 +38,13 @@
 .step-card { position: relative; }
 .step-number { display: grid; width: 28px; height: 28px; margin-bottom: 8px; place-items: center; border: 2px solid #142754; border-radius: 50%; background: #ffe55b; color: #142754; font-size: 14px; font-weight: 900; }
 .copy-note { display: block; margin-top: 7px; color: #176638; font-size: 11px; font-weight: 700; }
+.qr-layout { max-width: 700px; }
+.qr-card { display: flex; flex-direction: column; align-items: flex-start; }
+.qr-code { display: flex; width: 100%; flex-direction: column; align-items: center; gap: 8px; margin-top: 14px; text-align: center; color: #142754; font-size: 12px; font-weight: 700; }
+.qr-code img { width: min(320px, 100%); height: auto; padding: 8px; border-radius: 5px; background: #fff; image-rendering: pixelated; }
+.qr-video { width: min(100%, 440px); max-height: 55vh; margin-top: 14px; border: 2px solid #176b91; border-radius: 5px; background: #142754; object-fit: cover; }
+.qr-video[hidden] { display: none; }
+.qr-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .status-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
 .status-heading h3 { margin: 0; }
 .state-pill { padding: 4px 9px; border: 1px solid #176b91; border-radius: 999px; background: linear-gradient(145deg, #bcecff, #6ac9ef);; color: #142754; font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
