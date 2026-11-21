@@ -122,8 +122,8 @@ export class P2PSyncService {
     this.message.set('Creando la invitación P2P…');
     this.invitationCode.set('');
     this.answerCode.set('');
-    if (!this.roots.has('main')) {
-      this.fail(new Error('Selecciona la carpeta de la biblioteca principal antes de crear la invitación.'));
+    if (!this.roots.size) {
+      this.fail(new Error('Selecciona una biblioteca multimedia antes de crear la invitación.'));
       return;
     }
     try {
@@ -154,8 +154,8 @@ export class P2PSyncService {
     this.message.set('Procesando la invitación…');
     this.invitationCode.set('');
     this.answerCode.set('');
-    if (!this.roots.has('main')) {
-      this.fail(new Error('Selecciona la carpeta de la biblioteca principal antes de generar la respuesta.'));
+    if (!this.roots.size) {
+      this.fail(new Error('Selecciona una biblioteca multimedia antes de generar la respuesta.'));
       return;
     }
     try {
@@ -305,7 +305,7 @@ export class P2PSyncService {
   }
 
   private async startSync(): Promise<void> {
-    if (!this.roots.has('main')) {
+    if (!this.roots.size) {
       this.fail(new Error('No hay una carpeta raíz seleccionada.'));
       return;
     }
@@ -327,7 +327,8 @@ export class P2PSyncService {
     this.remoteIdle = false;
     this.message.set('Indexando archivos locales…');
     try {
-      await this.loadMetadata(this.roots.get('main')!.root);
+      const metadataRoot = this.roots.get('main')?.root ?? this.mediaRoots[0]?.root;
+      if (metadataRoot) await this.loadMetadata(metadataRoot);
       this.localFiles = await this.scanRoots();
       await this.loadLocalDeletions();
       this.localMeta = new Map(this.localFiles.map(file => [this.keyOf(file.root, file.path), file]));
@@ -631,7 +632,7 @@ export class P2PSyncService {
   }
 
   private async runPlan(): Promise<void> {
-    if (!this.remoteFiles || !this.roots.has('main')) return;
+    if (!this.remoteFiles) return;
     const remote = new Map(this.remoteFiles.map(file => [this.keyOf(file.root, file.path), file]));
     const local = new Map(this.localFiles.map(file => [this.keyOf(file.root, file.path), file]));
     const deletions = new Map<string, LibraryDeletion>();
@@ -1074,7 +1075,7 @@ export class P2PSyncService {
   }
 
   private async saveMetadata(): Promise<void> {
-    const main = this.roots.get('main');
+    const main = this.roots.get('main') ?? this.mediaRoots[0];
     if (!main) return;
     try {
       const parts = this.metadataFileName.split('/');

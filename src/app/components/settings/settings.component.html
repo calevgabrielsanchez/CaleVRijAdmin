@@ -10,6 +10,7 @@
         <h3>Menú de Settings</h3>
         <button type="button" [class.selected]="activePage() === 'sync'" (click)="selectPage('sync')">Sincronización P2P</button>
         <button type="button" [class.selected]="activePage() === 'qr'" (click)="selectPage('qr')">Sincronización por QR</button>
+        <button type="button" [disabled]="cloudSync.manualSyncing()" (click)="syncDatabaseNow()">{{ cloudSync.manualSyncing() ? 'Sincronizando con Supabase…' : 'Sincronizar con Supabase' }}</button>
         <button type="button" [class.selected]="activePage() === 'about'" (click)="selectPage('about')">Acerca de</button>
       </nav>
     </div>
@@ -21,7 +22,7 @@
         <div class="sync-layout">
           <article class="settings-card intro-card">
             <div class="drive-heading"><span class="drive-icon" aria-hidden="true">⇄</span><div><h3>Sincronización directa entre dispositivos</h3><p>Conecta dos aplicaciones CaleVRijAdmin por P2P con WebRTC. Los archivos viajan directamente de un dispositivo al otro, sin pasar por Google Drive ni por un servidor de archivos.</p></div></div>
-            <p class="settings-help">Ambos dispositivos deben tener abierta esta pantalla y la carpeta raíz de su biblioteca seleccionada. Los códigos de conexión se comparten manualmente (por mensaje, correo o USB) y solo sirven para esta sesión.</p>
+            <p class="settings-help">P2P sincroniza únicamente las bibliotecas multimedia seleccionadas. Los libros se sincronizan con Supabase, no por P2P. Los códigos de conexión solo sirven para esta sesión.</p>
             <p class="settings-help">La sincronización copia archivos nuevos y actualiza los que tengan una fecha de modificación más reciente. No elimina archivos. Si la red bloquea WebRTC, prueba con ambos dispositivos en la misma red Wi-Fi.</p>
             <p class="settings-help">La app guarda el estado de sincronización en <code>.calevri/sync.json</code> para recordar las fechas de los archivos recibidos y no volver a descargarlos.</p>
             <p class="root-status">{{ libraryRoot ? 'Biblioteca principal lista: ' + libraryRoot.name : 'Sin biblioteca principal. Abre el panel de biblioteca con Menu y selecciona la carpeta raíz.' }}</p>
@@ -34,7 +35,8 @@
               <div class="library-slot">
                 <span class="library-tag">Libros</span>
                 <strong>{{ libraryRoot ? libraryRoot.name : 'Sin carpeta' }}</strong>
-                <p>{{ libraryRoot ? 'Incluye libros, estantes, temas y la configuración de la app.' : 'Selecciona la carpeta principal desde el panel de biblioteca (Menu).' }}</p>
+                <p>{{ libraryRoot ? 'Libros, carpetas y archivos se guardan localmente y se replican con Supabase cuando hay conexión.' : 'Selecciona la carpeta principal desde el panel de biblioteca (Menu).' }}</p>
+                @if (libraryRoot) { <button type="button" class="secondary-button" [disabled]="cloudSync.manualSyncing()" (click)="cloudSync.syncManually()">{{ cloudSync.manualSyncing() ? 'Sincronizando…' : 'Sincronizar ahora' }}</button> }
               </div>
               <div class="library-slot">
                 <span class="library-tag player">Reproductor</span>
@@ -49,6 +51,7 @@
               </div>
             </div>
             <p class="settings-help">Elige una carpeta real del dispositivo. La configuración y los datos propios de la app se guardan en <code>.calevri/</code> dentro de la carpeta principal.</p>
+            <p class="root-status" role="status">{{ cloudSync.status() }}</p>
             @if (config.message()) { <p class="settings-help">{{ config.message() }}</p> }
             @if (playerMessage()) { <p class="root-status">{{ playerMessage() }}</p> }
           </article>
@@ -58,7 +61,7 @@
               <span class="step-number">1</span>
               <h3>Dispositivo A · Crear invitación</h3>
               <p>Crea el código en el dispositivo que inicia la conexión y compártelo con el otro dispositivo.</p>
-              <button type="button" [disabled]="!libraryRoot || sync.syncing() || sync.connected() || sync.role() === 'answerer' || sync.state() === 'creating-invitation'" (click)="createInvitation()">
+              <button type="button" [disabled]="!playerLibrary() || sync.syncing() || sync.connected() || sync.role() === 'answerer' || sync.state() === 'creating-invitation'" (click)="createInvitation()">
                 @if (sync.state() === 'creating-invitation') { <span class="loading-spinner" aria-hidden="true"></span> Trabajando… }
                 @else { Crear código de invitación }
               </button>
@@ -76,7 +79,7 @@
               <p>Pega el código de invitación del dispositivo A y genera el código de respuesta. Este paso debe hacerse en el otro dispositivo, no en el que creó la invitación.</p>
               <label for="invitation-input">Código de invitación recibido</label>
               <textarea id="invitation-input" rows="5" placeholder="Pega aquí el código de invitación…" [value]="invitationInput" (input)="invitationInput = $any($event.target).value"></textarea>
-              <button type="button" [disabled]="!libraryRoot || !invitationInput.trim() || sync.syncing() || sync.connected() || sync.role() === 'offerer' || (sync.role() === 'answerer' && sync.state() === 'waiting-connection')" (click)="generateAnswer()">
+              <button type="button" [disabled]="!playerLibrary() || !invitationInput.trim() || sync.syncing() || sync.connected() || sync.role() === 'offerer' || (sync.role() === 'answerer' && sync.state() === 'waiting-connection')" (click)="generateAnswer()">
                 @if (sync.role() === 'answerer' && sync.state() === 'waiting-connection' && !sync.answerCode()) { <span class="loading-spinner" aria-hidden="true"></span> Trabajando… }
                 @else { Generar respuesta }
               </button>
@@ -137,14 +140,14 @@
           <article class="settings-card intro-card">
             <div class="drive-heading"><span class="drive-icon" aria-hidden="true">▦</span><div><h3>Emparejar dispositivos con QR</h3><p>El primer dispositivo crea una invitación QR. El segundo la escanea y muestra la respuesta QR; escanéala con el primer dispositivo para iniciar la sincronización.</p></div></div>
             <p class="settings-help">Se requiere cámara y permiso de lectura. Ambos dispositivos deben tener seleccionada su carpeta raíz. Los QR solo sirven para esta sesión.</p>
-            <p class="root-status">{{ libraryRoot ? 'Biblioteca principal lista: ' + libraryRoot.name : 'Selecciona primero la carpeta raíz de la biblioteca.' }}</p>
+            <p class="root-status">{{ playerLibrary() ? 'Biblioteca multimedia lista: ' + playerLibrary()!.name : 'Selecciona una biblioteca multimedia en Settings antes de iniciar.' }}</p>
             @if (qrMessage()) { <p class="settings-alert" role="status">{{ qrMessage() }}</p> }
           </article>
 
           <article class="settings-card qr-card">
             <h3>1 · Crear o escanear</h3>
             @if (!sync.invitationCode() && sync.role() !== 'answerer') {
-              <button type="button" [disabled]="!libraryRoot || sync.syncing() || sync.connected() || sync.state() === 'creating-invitation'" (click)="createInvitation()">Crear invitación QR</button>
+              <button type="button" [disabled]="!playerLibrary() || sync.syncing() || sync.connected() || sync.state() === 'creating-invitation'" (click)="createInvitation()">Crear invitación QR</button>
             }
             @if (invitationQr()) { <div class="qr-code"><img [src]="invitationQr()" alt="Código QR de invitación"><span>Escanea este QR desde el otro dispositivo.</span></div> }
             @if (answerQr()) { <div class="qr-code"><img [src]="answerQr()" alt="Código QR de respuesta"><span>Escanea este QR desde el dispositivo que creó la invitación.</span></div> }
@@ -152,7 +155,7 @@
             <video #qrVideo class="qr-video" [hidden]="!scanningQr()" muted playsinline aria-label="Vista de cámara para escanear QR"></video>
             <div class="qr-actions">
               @if (scanningQr()) { <button type="button" class="secondary-button" (click)="stopQrScanner()">Detener cámara</button> }
-              @else if (!sync.connected() && !(sync.role() === 'answerer' && sync.answerCode())) { <button type="button" [disabled]="!libraryRoot || sync.syncing()" (click)="startQrScanner()">{{ sync.role() === 'offerer' ? 'Escanear respuesta QR' : 'Escanear invitación QR' }}</button> }
+              @else if (!sync.connected() && !(sync.role() === 'answerer' && sync.answerCode())) { <button type="button" [disabled]="!playerLibrary() || sync.syncing()" (click)="startQrScanner()">{{ sync.role() === 'offerer' ? 'Escanear respuesta QR' : 'Escanear invitación QR' }}</button> }
             </div>
             <p class="status-message">{{ sync.message() || 'Sin conexión iniciada.' }}</p>
           </article>

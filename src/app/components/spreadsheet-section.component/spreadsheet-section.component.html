@@ -2,6 +2,7 @@
   <div class="sheet-toolbar" aria-label="Herramientas de hoja">
     <button type="button" class="sheet-icon-tool" (click)="vm.mergeSelection()" title="Unir celdas" aria-label="Unir celdas"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18v16H3zM3 10h18M3 15h18M9 4v16M15 4v16M6 12h4m-2-2 2 2-2 2m10-2h-4m2-2-2 2 2 2"/></svg></button>
     <button type="button" class="sheet-icon-tool" (click)="vm.unmergeSelection()" title="Desunir celdas" aria-label="Desunir celdas"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18v16H3zM3 10h18M3 15h18M9 4v16M15 4v16M10 12H6m2-2-2 2 2 2m4-2h6m-2-2 2 2-2 2"/></svg></button>
+    <button type="button" class="paste-grid-tool" title="Pegar una tabla copiada de Excel desde la celda seleccionada" (click)="vm.pasteFromClipboard()"> ▤ </button>
     <label title="Color de fondo">Fondo <input type="color" [value]="vm.backgroundColor" (input)="vm.updateBackground($event)"></label>
     <label title="Color de letra">Letra <input type="color" [value]="vm.textColor" (input)="vm.updateTextColor($event)"></label>
     <button type="button" class="align-tool" (click)="vm.formatSelection({align: 'left'})" title="Alinear a la izquierda">⇤</button>
@@ -19,6 +20,7 @@
       </button>
     </div>
   </div>
+  @if (vm.clipboardMessage()) { <p class="clipboard-status" role="status">{{ vm.clipboardMessage() }}</p> }
   <div class="sheet-grid-wrap">
     <table class="sheet-grid"><thead><tr><th class="corner-cell"></th>@for (column of vm.columns; track column; let colIndex = $index) { <th scope="col" [style.width.px]="vm.columnWidth(colIndex)" [style.min-width.px]="vm.columnWidth(colIndex)">{{ column }}<span class="column-resize-handle" title="Arrastra para cambiar el ancho de la columna" (pointerdown)="vm.startResize('column', colIndex, $event)"></span></th> }</tr></thead>
       <tbody>@for (row of vm.rowNumbers; track row; let rowIndex = $index) {

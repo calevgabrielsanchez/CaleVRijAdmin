@@ -2,6 +2,7 @@ import { Component, ElementRef, Input, OnDestroy, ViewChild, computed, effect, i
 import { ProjectDirectoryHandle } from '../view-content.component/project-library-manager.component';
 import { LibraryRecord, LibraryTreeService } from '../../services/library-tree.service';
 import { ConfigService } from '../../services/config.service';
+import { CloudLibrarySyncService } from '../../services/cloud-library-sync.service';
 import { P2PState, P2PSyncService, SyncRoot } from './p2p-sync.service';
 import { CreatividadStorageService } from '../creatividad.component/creatividad-storage.service';
 
@@ -19,6 +20,7 @@ export class SettingsComponent implements OnDestroy {
   readonly sync = inject(P2PSyncService);
   readonly libraryTree = inject(LibraryTreeService);
   readonly config = inject(ConfigService);
+  readonly cloudSync = inject(CloudLibrarySyncService);
   readonly creatividadStorage = inject(CreatividadStorageService);
   readonly menuOpen = signal(false);
   readonly activePage = signal<SettingsPage>('sync');
@@ -60,6 +62,18 @@ export class SettingsComponent implements OnDestroy {
     this.stopQrScanner();
     this.activePage.set(page);
     this.menuOpen.set(false);
+  }
+
+  syncDatabaseNow(): void {
+    this.menuOpen.set(false);
+    if (!this.libraryRoot) {
+      this.formMessage = 'Selecciona primero la carpeta raíz de libros desde el panel de biblioteca.';
+      this.activePage.set('sync');
+      return;
+    }
+    this.formMessage = '';
+    this.activePage.set('sync');
+    void this.cloudSync.syncManually();
   }
 
   async startQrScanner(): Promise<void> {
@@ -215,11 +229,7 @@ export class SettingsComponent implements OnDestroy {
   private async buildRoots(): Promise<SyncRoot[]> {
     const roots: SyncRoot[] = [];
     await this.libraryTree.initialize();
-    if (this.libraryRoot) {
-      roots.push({ kind: 'main', id: 'main', name: this.libraryRoot.name, root: this.libraryRoot });
-    }
     for (const player of this.libraryTree.libraries()) {
-      if (this.libraryRoot && player.name.toLocaleLowerCase() === this.libraryRoot.name.toLocaleLowerCase()) continue;
       const root = player.root as ProjectDirectoryHandle;
       try {
         let permission = await root.queryPermission({ mode: 'readwrite' });
@@ -251,8 +261,8 @@ export class SettingsComponent implements OnDestroy {
   }
 
   private requireRoot(): boolean {
-    if (this.libraryRoot) return true;
-    this.formMessage = 'Selecciona la carpeta raíz de la biblioteca principal desde el panel de biblioteca (Menu).';
+    if (this.playerLibrary()) return true;
+    this.formMessage = 'Selecciona primero la carpeta de la biblioteca multimedia en Settings.';
     return false;
   }
 }

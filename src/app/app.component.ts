@@ -12,6 +12,7 @@ import { CreatividadComponent } from './components/creatividad.component/creativ
 import { CreatividadNuevaComponent } from './components/menu.creatividad.component/creatividad-nueva.component';
 import { ConfigService } from './services/config.service';
 import { LibraryTreeService } from './services/library-tree.service';
+import { CloudLibrarySyncService } from './services/cloud-library-sync.service';
 import { P2PSyncService } from './components/settings/p2p-sync.service';
 import type { LibraryMediaSource } from './services/library-tree.service';
 
@@ -38,7 +39,9 @@ export class AppComponent {
   @ViewChild(CreatividadComponent) private creatividadInstance?: CreatividadComponent;
   private readonly config = inject(ConfigService);
   private readonly sync = inject(P2PSyncService);
+  private readonly cloudLibrarySync = inject(CloudLibrarySyncService);
   readonly loadingMessage = computed(() => {
+    if (this.cloudLibrarySync.manualSyncing()) return 'Sincronizando la biblioteca de libros con Supabase…';
     if (this.sync.syncing()) return 'Sincronizando bibliotecas…';
     if (this.bookLoading()) return `Cargando libro «${this.loadingBookName()}»…`;
     const scan = this.libraryTree.progress();
@@ -71,8 +74,9 @@ export class AppComponent {
   readonly actionMessage = signal('');
   readonly selectedLibraryFile = signal<File | LibraryMediaSource | null>(null);
   readonly currentPlayerFileName = signal('');
-  readonly columns = Array.from({ length: 26 }, (_, index) => String.fromCharCode(65 + index));
-  readonly rowNumbers = Array.from({ length: 50 }, (_, index) => index + 1);
+  columns = Array.from({ length: 26 }, (_, index) => String.fromCharCode(65 + index));
+  rowNumbers = Array.from({ length: 50 }, (_, index) => index + 1);
+  readonly clipboardMessage = signal('');
   readonly sheets = signal<SheetData[]>([{ name: 'Hoja 1', cells: {}, extraTexts: {}, formats: {}, merges: {}, columnWidths: {}, rowHeights: {} }]);
   readonly currentSheetIndex = signal(0);
   readonly currentBook = signal<TreeNode | null>(null);
@@ -101,6 +105,8 @@ export class AppComponent {
     isCoveredCell: (row, col) => this.isCoveredCell(row, col),
     hasCellExtraText: (row, col) => this.hasCellExtraText(row, col),
     selectedCellText: () => this.selectedCellText(),
+    pasteFromClipboard: () => this.pasteFromClipboard(),
+    clipboardMessage: () => this.clipboardMessage(),
     saveAndMoveCell: (value, direction) => this.saveAndMoveCell(value, direction),
     startResize: (axis, index, event) => this.startResize(axis, index, event),
     resizeDimension: event => this.resizeDimension(event),
@@ -182,6 +188,7 @@ export class AppComponent {
   setProjectLibraryRoot(root: DirectoryHandle | null): void {
     this.projectLibraryRoot.set(root);
     void this.config.configure(root);
+    void this.cloudLibrarySync.setRoot(root);
   }
 
   playLibraryFile(file: File | LibraryMediaSource): void {
@@ -375,7 +382,7 @@ export class AppComponent {
 
   addSheet(): void {
     const next = Math.max(0, ...this.sheets().map(sheet => Number(sheet.name.match(/\d+/)?.[0] ?? 0))) + 1;
-    this.sheets.update(sheets => [...sheets, { name: `Hoja ${next}`, cells: {}, extraTexts: {}, formats: {}, merges: {}, columnWidths: {}, rowHeights: {} }]);
+    this.sheets.update(sheets => [...sheets, { name: `Hoja ${next}`, storageFolderName: `Hoja ${next}`, cells: {}, extraTexts: {}, formats: {}, merges: {}, columnWidths: {}, rowHeights: {} }]);
     this.currentSheetIndex.set(this.sheets().length - 1);
     this.selectionAnchor.set([0, 0]); this.selectionEnd.set([0, 0]);
     this.scheduleWorkbookSave();
@@ -434,6 +441,7 @@ export class AppComponent {
           const data = JSON.parse(await file.text()) as Partial<SheetData>;
           loaded.push({
             name: typeof data.name === 'string' && data.name.trim() ? data.name : name,
+            storageFolderName: name,
             details: typeof data.details === 'string' ? data.details : '',
             cells: data.cells ?? {},
             extraTexts: data.extraTexts ?? {},
@@ -443,7 +451,7 @@ export class AppComponent {
             rowHeights: data.rowHeights ?? {}
           });
         } catch {
-          if (isLegacySheetFolder) loaded.push({ name, cells: {}, extraTexts: {}, formats: {}, merges: {}, columnWidths: {}, rowHeights: {} });
+          if (isLegacySheetFolder) loaded.push({ name, storageFolderName: name, cells: {}, extraTexts: {}, formats: {}, merges: {}, columnWidths: {}, rowHeights: {} });
         }
       }
       loaded.sort((a, b) => {
@@ -452,7 +460,7 @@ export class AppComponent {
         if (aNumber && bNumber) return Number(aNumber) - Number(bNumber);
         return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
       });
-      if (!loaded.length) loaded.push({ name: 'Hoja 1', cells: {}, extraTexts: {}, formats: {}, merges: {}, columnWidths: {}, rowHeights: {} });
+      if (!loaded.length) loaded.push({ name: 'Hoja 1', storageFolderName: 'Hoja 1', cells: {}, extraTexts: {}, formats: {}, merges: {}, columnWidths: {}, rowHeights: {} });
       this.sheets.set(loaded);
       let savedSheetIndex = 0;
       try {
@@ -478,6 +486,68 @@ export class AppComponent {
         this.loadingBookName.set('');
       }
     }
+  }
+
+  async pasteFromClipboard(): Promise<void> {
+    this.clipboardMessage.set('');
+    if (!navigator.clipboard?.readText) {
+      this.clipboardMessage.set('El navegador no permite leer el portapapeles. Abre la app en un contexto seguro (HTTPS) y concede permiso.');
+      return;
+    }
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text) { this.clipboardMessage.set('El portapapeles está vacío. Copia primero un rango de Excel.'); return; }
+      const matrix = this.parseClipboardTable(text);
+      const maxRows = 1000, maxColumns = 200;
+      const sourceRows = matrix.slice(0, maxRows).map(row => row.slice(0, maxColumns));
+      const [startRow, startCol] = this.selectionEnd();
+      const endRow = startRow + sourceRows.length - 1;
+      const endCol = startCol + Math.max(0, ...sourceRows.map(row => row.length - 1));
+      if (endRow >= this.rowNumbers.length) this.rowNumbers = Array.from({ length: endRow + 1 }, (_, index) => index + 1);
+      if (endCol >= this.columns.length) this.columns = Array.from({ length: endCol + 1 }, (_, index) => this.columnLabel(index));
+      this.updateCurrentSheet(sheet => {
+        for (let rowOffset = 0; rowOffset < sourceRows.length; rowOffset++) {
+          for (let colOffset = 0; colOffset < sourceRows[rowOffset].length; colOffset++) {
+            const key = this.cellKey(startRow + rowOffset, startCol + colOffset);
+            const value = sourceRows[rowOffset][colOffset];
+            if (value === '') delete sheet.cells[key];
+            else sheet.cells[key] = value;
+          }
+        }
+      });
+      this.selectionAnchor.set([startRow, startCol]);
+      this.selectionEnd.set([endRow, endCol]);
+      const truncated = matrix.length > maxRows || matrix.some(row => row.length > maxColumns);
+      this.clipboardMessage.set(`Pegadas ${sourceRows.length} filas × ${Math.max(0, ...sourceRows.map(row => row.length))} columnas${truncated ? ` (límite: ${maxRows} × ${maxColumns})` : ''}.`);
+    } catch (error) {
+      this.clipboardMessage.set(error instanceof Error ? `No se pudo leer el portapapeles: ${error.message}` : 'No se pudo leer el portapapeles. Revisa los permisos del navegador.');
+    }
+  }
+
+  private parseClipboardTable(text: string): string[][] {
+    const rows: string[][] = [];
+    let row: string[] = [], value = '', quoted = false;
+    for (let index = 0; index < text.length; index++) {
+      const char = text[index];
+      if (char === '"') {
+        if (quoted && text[index + 1] === '"') { value += '"'; index++; }
+        else quoted = !quoted;
+      } else if (!quoted && char === '\t') {
+        row.push(value); value = '';
+      } else if (!quoted && (char === '\r' || char === '\n')) {
+        row.push(value); rows.push(row); row = []; value = '';
+        if (char === '\r' && text[index + 1] === '\n') index++;
+      } else value += char;
+    }
+    row.push(value);
+    if (row.length > 1 || row[0] !== '' || rows.length === 0) rows.push(row);
+    return rows;
+  }
+
+  private columnLabel(index: number): string {
+    let label = '', value = index + 1;
+    while (value > 0) { value--; label = String.fromCharCode(65 + value % 26) + label; value = Math.floor(value / 26); }
+    return label;
   }
 
   closeBook(): void {
@@ -522,23 +592,26 @@ export class AppComponent {
   }
 
   private async persistWorkbook(book: TreeNode, sheets: SheetData[], activeSheetIndex: number): Promise<void> {
-    const validFolders = new Set(sheets.map(sheet => sheet.name));
+    const validFolders = new Set(sheets.map(sheet => sheet.storageFolderName ?? sheet.name));
     for await (const [name, entry] of book.handle.entries()) {
       if (entry.kind === 'directory' && /^Hoja\s+\d+$/i.test(name) && !validFolders.has(name)) {
+        await this.cloudLibrarySync.markDeleted(entry, name);
         await book.handle.removeEntry(name, { recursive: true });
       }
     }
     for (const sheet of sheets) {
-      const folder = await book.handle.getDirectoryHandle(sheet.name, { create: true });
+      const folder = await book.handle.getDirectoryHandle(sheet.storageFolderName ?? sheet.name, { create: true });
       const file = await folder.getFileHandle('hoja.json', { create: true });
       const writer = await file.createWritable();
-      await writer.write(JSON.stringify(sheet, null, 2));
+      const { storageFolderName: _storageFolderName, ...data } = sheet;
+      await writer.write(JSON.stringify(data, null, 2));
       await writer.close();
     }
     const metadataHandle = await book.handle.getFileHandle('libro.json', { create: true });
     const metadataWriter = await metadataHandle.createWritable();
     await metadataWriter.write(JSON.stringify({ activeSheet: sheets[activeSheetIndex]?.name ?? sheets[0]?.name ?? 'Hoja 1' }));
     await metadataWriter.close();
+    this.cloudLibrarySync.scheduleSync();
   }
 
 }

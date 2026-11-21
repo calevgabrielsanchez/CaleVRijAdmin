@@ -3,6 +3,7 @@ import { Component, HostListener, Input } from '@angular/core';
 export interface CellFormat { background?: string; color?: string; align?: 'left' | 'center' | 'right' }
 export interface SheetData {
   name: string;
+  storageFolderName?: string;
   details?: string;
   cells: Record<string, string>;
   extraTexts: Record<string, string>;
@@ -28,6 +29,8 @@ export interface SpreadsheetViewModel {
   isCoveredCell: (row: number, col: number) => boolean;
   hasCellExtraText: (row: number, col: number) => boolean;
   selectedCellText: () => string;
+  pasteFromClipboard: () => Promise<void>;
+  clipboardMessage: () => string;
   saveAndMoveCell: (value: string, direction: 'vertical' | 'horizontal') => void;
   startResize: (axis: 'column' | 'row', index: number, event: PointerEvent) => void;
   resizeDimension: (event: PointerEvent) => void;

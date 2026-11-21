@@ -2,6 +2,7 @@ import { Component, ElementRef, EventEmitter, Input, OnChanges, OnInit, Output, 
 import { Capacitor } from '@capacitor/core';
 import { AndroidDirectoryAccess } from '@calevrij/admin-android-directory-access';
 import { P2PSyncService } from '../settings/p2p-sync.service';
+import { CloudLibrarySyncService } from '../../services/cloud-library-sync.service';
 import * as XLSX from 'xlsx';
 import { SheetData } from '../spreadsheet-section.component/spreadsheet-section.component';
 
@@ -155,6 +156,7 @@ const PROJECT_LAST_ROOT_KEY = 'last-used';
 })
 export class ProjectLibraryManagerComponent implements OnChanges, OnInit {
   private readonly sync = inject(P2PSyncService);
+  private readonly cloudSync = inject(CloudLibrarySyncService);
   @ViewChild('rootPicker') private rootPicker?: ElementRef<HTMLInputElement>;
   @Input() active = false;
   @Output() readonly bookSelected = new EventEmitter<ProjectLibraryNode | null>();
@@ -185,6 +187,10 @@ export class ProjectLibraryManagerComponent implements OnChanges, OnInit {
       const completed = this.sync.state() === 'completed';
       const root = this.rootHandle();
       if (completed && root) void this.refreshTree();
+    });
+    effect(() => {
+      this.cloudSync.revision();
+      if (this.rootHandle()) void this.refreshTree();
     });
   }
 
@@ -605,14 +611,17 @@ export class ProjectLibraryManagerComponent implements OnChanges, OnInit {
       else folder = await parent!.getDirectoryHandle(name, { create: true });
       const file = await folder.getFileHandle('detalles.txt', { create: true });
       const writer = await file.createWritable(); await writer.write(this.libraryDetails()); await writer.close();
-      await this.refreshTree(); this.modalOpen.set(false);
+      await this.refreshTree(); this.modalOpen.set(false); this.cloudSync.scheduleSync();
       this.statusMessage.set(editing ? `Se actualizó «${name}».` : `Se creó «${name}».`);
     } catch { this.statusMessage.set('No se pudo crear la biblioteca. Comprueba los permisos de escritura.'); }
   }
 
   async deleteNode(node: ProjectLibraryNode, parent: ProjectDirectoryHandle): Promise<void> {
     if (!confirm(`¿Eliminar «${node.name}» y todo su contenido?`)) return;
-    try { await parent.removeEntry(node.name, { recursive: true }); await this.refreshTree(); this.statusMessage.set(`Se eliminó «${node.name}».`); }
+    try {
+      await this.cloudSync.markDeleted(node.handle, node.name).catch(() => undefined);
+      await parent.removeEntry(node.name, { recursive: true }); await this.refreshTree(); this.cloudSync.scheduleSync(); this.statusMessage.set(`Se eliminó «${node.name}».`);
+    }
     catch { this.statusMessage.set('No se pudo eliminar el elemento.'); }
   }
 
@@ -639,6 +648,7 @@ export class ProjectLibraryManagerComponent implements OnChanges, OnInit {
       const file = await node.handle.getFileHandle(image.name, { create: true });
       const writer = await file.createWritable(); await writer.write(image); await writer.close();
       this.currentImageName.set(image.name); this.setImagePreview(URL.createObjectURL(image));
+      this.cloudSync.scheduleSync();
       this.statusMessage.set(`Imagen guardada en «${node.name}».`);
     } catch { this.statusMessage.set('No se pudo guardar la imagen.'); }
   }
@@ -646,7 +656,7 @@ export class ProjectLibraryManagerComponent implements OnChanges, OnInit {
   async deleteImage(): Promise<void> {
     const node = this.imageTarget(), name = this.currentImageName();
     if (!node || !name) return;
-    try { await node.handle.removeEntry(name); this.currentImageName.set(''); this.setImagePreview(''); this.statusMessage.set(`Se eliminó la imagen de «${node.name}».`); }
+    try { await node.handle.removeEntry(name); this.currentImageName.set(''); this.setImagePreview(''); this.cloudSync.scheduleSync(); this.statusMessage.set(`Se eliminó la imagen de «${node.name}».`); }
     catch { this.statusMessage.set('No se pudo eliminar la imagen.'); }
   }
 
