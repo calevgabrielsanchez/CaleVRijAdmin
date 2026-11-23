@@ -110,7 +110,7 @@ class AndroidProjectDirectoryHandle implements ProjectDirectoryHandle {
     return new AndroidProjectFileHandle(this.uri, this.path ? `${this.path}/${name}` : name);
   }
 
-  async removeEntry(name: string): Promise<void> {
+  async removeEntry(name: string, _options?: { recursive?: boolean }): Promise<void> {
     await AndroidDirectoryAccess.deleteEntry({ uri: this.uri, path: this.path ? `${this.path}/${name}` : name });
   }
 
@@ -611,18 +611,26 @@ export class ProjectLibraryManagerComponent implements OnChanges, OnInit {
       else folder = await parent!.getDirectoryHandle(name, { create: true });
       const file = await folder.getFileHandle('detalles.txt', { create: true });
       const writer = await file.createWritable(); await writer.write(this.libraryDetails()); await writer.close();
-      await this.refreshTree(); this.modalOpen.set(false); this.cloudSync.scheduleSync();
+      await this.refreshTree(); this.modalOpen.set(false);
       this.statusMessage.set(editing ? `Se actualizó «${name}».` : `Se creó «${name}».`);
     } catch { this.statusMessage.set('No se pudo crear la biblioteca. Comprueba los permisos de escritura.'); }
   }
 
   async deleteNode(node: ProjectLibraryNode, parent: ProjectDirectoryHandle): Promise<void> {
     if (!confirm(`¿Eliminar «${node.name}» y todo su contenido?`)) return;
+    const previousMessage = this.statusMessage();
+    this.statusMessage.set(`Eliminando «${node.name}»…`);
     try {
-      await this.cloudSync.markDeleted(node.handle, node.name).catch(() => undefined);
-      await parent.removeEntry(node.name, { recursive: true }); await this.refreshTree(); this.cloudSync.scheduleSync(); this.statusMessage.set(`Se eliminó «${node.name}».`);
+      await this.cloudSync.markDeleted(node.handle, node.name);
+      await parent.removeEntry(node.name, { recursive: true });
+      await this.refreshTree();
+      this.openMenuPath.set(null);
+      this.statusMessage.set(`Se eliminó «${node.name}».`);
+    } catch (error) {
+      this.statusMessage.set(error instanceof Error
+        ? `No se pudo eliminar «${node.name}»: ${error.message}`
+        : `No se pudo eliminar «${node.name}». ${previousMessage}`);
     }
-    catch { this.statusMessage.set('No se pudo eliminar el elemento.'); }
   }
 
   async openImageDialog(node: ProjectLibraryNode): Promise<void> {
@@ -644,11 +652,13 @@ export class ProjectLibraryManagerComponent implements OnChanges, OnInit {
     if (!image.type.startsWith('image/')) { this.statusMessage.set('Selecciona un archivo de imagen válido.'); return; }
     try {
       const previousName = this.currentImageName();
-      if (previousName && previousName !== image.name) await node.handle.removeEntry(previousName);
+      if (previousName && previousName !== image.name) {
+        await this.cloudSync.markDeletedFile(node.handle, previousName);
+        await node.handle.removeEntry(previousName);
+      }
       const file = await node.handle.getFileHandle(image.name, { create: true });
       const writer = await file.createWritable(); await writer.write(image); await writer.close();
       this.currentImageName.set(image.name); this.setImagePreview(URL.createObjectURL(image));
-      this.cloudSync.scheduleSync();
       this.statusMessage.set(`Imagen guardada en «${node.name}».`);
     } catch { this.statusMessage.set('No se pudo guardar la imagen.'); }
   }
@@ -656,7 +666,7 @@ export class ProjectLibraryManagerComponent implements OnChanges, OnInit {
   async deleteImage(): Promise<void> {
     const node = this.imageTarget(), name = this.currentImageName();
     if (!node || !name) return;
-    try { await node.handle.removeEntry(name); this.currentImageName.set(''); this.setImagePreview(''); this.cloudSync.scheduleSync(); this.statusMessage.set(`Se eliminó la imagen de «${node.name}».`); }
+    try { await this.cloudSync.markDeletedFile(node.handle, name); await node.handle.removeEntry(name); this.currentImageName.set(''); this.setImagePreview(''); this.statusMessage.set(`Se eliminó la imagen de «${node.name}».`); }
     catch { this.statusMessage.set('No se pudo eliminar la imagen.'); }
   }
 

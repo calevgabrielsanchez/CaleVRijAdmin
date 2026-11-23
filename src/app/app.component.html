@@ -49,12 +49,33 @@
   @if (textPlusOpen()) {
     <app-text-plus [(textoContenido)]="textPlusContent" (cerrar)="closeTextPlus()" (aceptar)="acceptTextPlus()" (mediaReference)="playReferencedMedia($event)"></app-text-plus>
   }
-  @if (loadingMessage()) {
+  @if (loadingMessage() && !(syncDialogOpen() && syncDialogActive())) {
     <div class="loading-backdrop" role="status" aria-live="polite" aria-label="Proceso en curso">
       <section class="loading-dialog" aria-modal="true">
         <span class="loading-spinner" aria-hidden="true"></span>
         <strong>{{ loadingMessage() }}</strong>
         <span class="loading-hint">Espera un momento, por favor.</span>
+      </section>
+    </div>
+  }
+  @if (syncDialogOpen()) {
+    <div class="loading-backdrop" role="presentation">
+      <section class="loading-dialog sync-dialog" role="dialog" aria-modal="true" aria-labelledby="sync-dialog-title" aria-live="polite">
+        @if (syncDialogActive()) {
+          <span class="loading-spinner" aria-hidden="true"></span>
+          <strong id="sync-dialog-title">Sincronizando la biblioteca de libros con Supabase…</strong>
+          <span class="loading-hint">{{ cloudLibrarySync.status() }}</span>
+          @if (syncProgress(); as progress) {
+            <div class="sync-dialog-progress">
+              <div class="sync-dialog-progress-label"><strong>{{ progress.phase }}</strong><span>{{ progress.total !== null && progress.total > 0 ? progress.current + ' / ' + progress.total : progress.current + ' elementos' }}</span></div>
+              <progress [attr.value]="progress.total !== null && progress.total > 0 ? progress.current : null" [attr.max]="progress.total !== null && progress.total > 0 ? progress.total : null"></progress>
+            </div>
+          }
+          <button type="button" class="sync-dialog-button cancel" (click)="cloudLibrarySync.cancelSync()">Cancelar sincronización</button>
+        } @else {
+          <strong id="sync-dialog-title">{{ syncDialogMessage() }}</strong>
+          <button type="button" class="sync-dialog-button accept" (click)="acceptSyncDialog()">Aceptar</button>
+        }
       </section>
     </div>
   }

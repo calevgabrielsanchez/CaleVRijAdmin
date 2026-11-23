@@ -30,13 +30,13 @@
           </article>
 
           <article class="settings-card libraries-card">
-            <div class="drive-heading"><span class="drive-icon" aria-hidden="true">▦</span><div><h3>Bibliotecas que se sincronizan</h3><p>Se sincronizan dos carpetas independientes: la biblioteca de libros (principal) y la biblioteca del reproductor. Todo lo que esté dentro de ellas viaja entre dispositivos, incluida la carpeta de configuración <code>.calevri</code>.</p></div></div>
+            <div class="drive-heading"><span class="drive-icon" aria-hidden="true">▦</span><div><h3>Biblioteca de libros</h3><p>Supabase solo se consulta y actualiza cuando pulsas «Sincronizar con Supabase». Los cambios permanecen locales hasta ese momento.</p></div></div>
             <div class="library-grid">
               <div class="library-slot">
                 <span class="library-tag">Libros</span>
                 <strong>{{ libraryRoot ? libraryRoot.name : 'Sin carpeta' }}</strong>
-                <p>{{ libraryRoot ? 'Libros, carpetas y archivos se guardan localmente y se replican con Supabase cuando hay conexión.' : 'Selecciona la carpeta principal desde el panel de biblioteca (Menu).' }}</p>
-                @if (libraryRoot) { <button type="button" class="secondary-button" [disabled]="cloudSync.manualSyncing()" (click)="cloudSync.syncManually()">{{ cloudSync.manualSyncing() ? 'Sincronizando…' : 'Sincronizar ahora' }}</button> }
+                <p>{{ libraryRoot ? 'Los cambios quedan guardados localmente hasta pulsar «Sincronizar con Supabase».' : 'Selecciona la carpeta principal desde el panel de biblioteca (Menu).' }}</p>
+                @if (libraryRoot) { <button type="button" class="secondary-button" [disabled]="cloudSync.manualSyncing()" (click)="syncDatabaseNow()">{{ cloudSync.manualSyncing() ? 'Sincronizando…' : 'Sincronizar con Supabase' }}</button> }
               </div>
               <div class="library-slot">
                 <span class="library-tag player">Reproductor</span>
@@ -51,7 +51,15 @@
               </div>
             </div>
             <p class="settings-help">Elige una carpeta real del dispositivo. La configuración y los datos propios de la app se guardan en <code>.calevri/</code> dentro de la carpeta principal.</p>
-            <p class="root-status" role="status">{{ cloudSync.status() }}</p>
+            @if (!cloudSync.manualSyncing()) { <p class="root-status" role="status">{{ cloudSync.status() }}</p> }
+            @if (cloudSync.errors().length) {
+              <section class="cloud-error-cache" aria-label="Errores guardados de sincronización">
+                <div class="cloud-error-heading"><strong>Errores de sincronización ({{ cloudSync.errors().length }})</strong><button type="button" class="secondary-button" (click)="cloudSync.clearErrors()">Borrar errores</button></div>
+                @for (error of cloudSync.errors(); track error.at + error.phase) {
+                  <details class="cloud-error-entry"><summary>{{ error.at }} · {{ error.phase }} · {{ error.message }}</summary><pre>{{ error.details }}</pre></details>
+                }
+              </section>
+            }
             @if (config.message()) { <p class="settings-help">{{ config.message() }}</p> }
             @if (playerMessage()) { <p class="root-status">{{ playerMessage() }}</p> }
           </article>
@@ -131,7 +139,7 @@
               <li>Reproductor de audio, video, imágenes y PDF.</li>
               <li>Sincronización P2P directa entre dispositivos.</li>
             </ul>
-            <p class="about-version">Versión <strong>v1.0.0</strong> · Angular y Capacitor.</p>
+            <p class="about-version">Versión <strong>v1.2.0</strong> · Angular y Capacitor.</p>
           </div>
         </article>
       }

@@ -64,7 +64,7 @@ export class SettingsComponent implements OnDestroy {
     this.menuOpen.set(false);
   }
 
-  syncDatabaseNow(): void {
+  async syncDatabaseNow(): Promise<void> {
     this.menuOpen.set(false);
     if (!this.libraryRoot) {
       this.formMessage = 'Selecciona primero la carpeta raíz de libros desde el panel de biblioteca.';
@@ -73,7 +73,7 @@ export class SettingsComponent implements OnDestroy {
     }
     this.formMessage = '';
     this.activePage.set('sync');
-    void this.cloudSync.syncManually();
+    await this.cloudSync.syncManually();
   }
 
   async startQrScanner(): Promise<void> {

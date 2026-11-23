@@ -1,6 +1,6 @@
 import { Component, EventEmitter, Output, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
-import { IndexedLibraryNode, LibraryRecord, LibraryTreeService } from '../../services/library-tree.service';
+import { IndexedLibraryNode, LibraryRecord, LibraryTreeService, libraryPathPrefix } from '../../services/library-tree.service';
 import type { LibraryMediaSource } from '../../services/library-tree.service';
 import { MediaReferenceService } from '../../services/media-reference.service';
 
@@ -168,7 +168,9 @@ export class LibraryTreeComponent {
   async copyFileReference(node: IndexedLibraryNode): Promise<void> {
     const library = this.service.libraries().find(item => item.id === node.libraryId);
     if (!library) return;
-    const encodedPath = [library.name, ...node.path.split('/')].map(part => encodeURIComponent(part)).join('/');
+    const libraryPath = libraryPathPrefix(library.root);
+    const encodedPath = [library.name, ...libraryPath.split('/').filter(Boolean), ...node.path.split('/')]
+      .map(part => encodeURIComponent(part)).join('/');
     const reference = `[[media:${encodedPath}]]`;
     this.mediaReferences.set(reference);
     try {

@@ -148,6 +148,10 @@ class AndroidLibraryDirectoryHandle implements LibraryDirectoryHandle {
   async requestPermission(): Promise<PermissionState> { return 'granted'; }
 }
 
+export function libraryPathPrefix(root: LibraryDirectoryHandle): string {
+  return root instanceof AndroidLibraryDirectoryHandle ? root.path : '';
+}
+
 export interface LibraryRecord {
   id: string;
   name: string;

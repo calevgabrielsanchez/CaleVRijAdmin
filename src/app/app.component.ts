@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, ViewChild, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ViewChild, computed, effect, inject, signal } from '@angular/core';
 import { TextPlusComponent } from './components/text-plus.component/text-plus.component';
 import { LibraryTreeComponent } from './components/library-tree.component/library-tree.component';
 import { MainMenuComponent } from './components/main-menu.component/main-menu.component';
@@ -39,7 +39,7 @@ export class AppComponent {
   @ViewChild(CreatividadComponent) private creatividadInstance?: CreatividadComponent;
   private readonly config = inject(ConfigService);
   private readonly sync = inject(P2PSyncService);
-  private readonly cloudLibrarySync = inject(CloudLibrarySyncService);
+  readonly cloudLibrarySync = inject(CloudLibrarySyncService);
   readonly loadingMessage = computed(() => {
     if (this.cloudLibrarySync.manualSyncing()) return 'Sincronizando la biblioteca de libros con Supabase…';
     if (this.sync.syncing()) return 'Sincronizando bibliotecas…';
@@ -48,9 +48,15 @@ export class AppComponent {
     if (scan?.running) return `Cargando biblioteca… ${scan.scanned} elementos (${scan.percent}%)`;
     return '';
   });
+  readonly syncDialogOpen = signal(false);
+  readonly syncDialogMessage = computed(() => this.cloudLibrarySync.manualSyncing()
+    ? this.cloudLibrarySync.status()
+    : this.cloudLibrarySync.result());
+  readonly syncDialogActive = computed(() => this.cloudLibrarySync.manualSyncing() || !this.cloudLibrarySync.completed());
+  readonly syncProgress = computed(() => this.cloudLibrarySync.progress());
   private readonly libraryTree = inject(LibraryTreeService);
   readonly appName = 'CaleVRijAdmin';
-  readonly version = 'v1.0.0';
+  readonly version = 'v1.2.1';
   readonly sections: readonly AppSection[] = [
     { key: 'inicio', label: 'Libro', icon: '▤', title: 'Libro', description: 'Abre un libro desde el árbol de bibliotecas para editar sus hojas.', cardTitle: 'Tus hojas', cardText: 'Cada libro conserva sus celdas, formatos y hojas.' },
     { key: 'reproductor', label: 'Reproductor', icon: '⏯', title: 'Reproductor', description: 'Reproductor multimedia.', cardTitle: 'Reproducción', cardText: 'Controles y contenido multimedia.' },
@@ -138,11 +144,18 @@ export class AppComponent {
   private saveQueue: Promise<void> = Promise.resolve();
 
   constructor() {
+    effect(() => {
+      if (this.cloudLibrarySync.manualSyncing()) this.syncDialogOpen.set(true);
+    });
     void this.libraryTree.initialize().then(() => {
       if (this.activeKey() === this.sections[0].key && this.libraryTree.lastUsedLibraryId()) {
         this.activeKey.set('library-tree');
       }
     });
+  }
+
+  acceptSyncDialog(): void {
+    if (this.cloudLibrarySync.completed()) this.syncDialogOpen.set(false);
   }
 
   navigate(key: string): void {
@@ -611,7 +624,6 @@ export class AppComponent {
     const metadataWriter = await metadataHandle.createWritable();
     await metadataWriter.write(JSON.stringify({ activeSheet: sheets[activeSheetIndex]?.name ?? sheets[0]?.name ?? 'Hoja 1' }));
     await metadataWriter.close();
-    this.cloudLibrarySync.scheduleSync();
   }
 
 }

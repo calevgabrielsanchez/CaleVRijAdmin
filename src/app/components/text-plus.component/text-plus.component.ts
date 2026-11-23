@@ -1,5 +1,5 @@
 import { Component, ElementRef, EventEmitter, HostListener, Input, OnDestroy, OnInit, Output, ViewChild, inject, model } from '@angular/core';
-import { LibraryTreeService } from '../../services/library-tree.service';
+import { LibraryTreeService, libraryPathPrefix } from '../../services/library-tree.service';
 import type { LibraryMediaSource } from '../../services/library-tree.service';
 import { MediaReferenceService } from '../../services/media-reference.service';
 
@@ -91,37 +91,79 @@ export class TextPlusComponent implements OnInit, OnDestroy {
 
   @HostListener('click', ['$event'])
   async openMediaReference(event: MouseEvent): Promise<void> {
-    const target = event.target;
+    await this.openMediaReferenceFromTarget(event.target, event);
+  }
+
+  private async openMediaReferenceFromTarget(target: EventTarget | null, event?: Event): Promise<void> {
     if (!(target instanceof Element)) return;
-    const button = target.closest<HTMLElement>('.pergamino-media-reference, .pergamino-media-image');
-    const encodedPath = button?.title.startsWith('media-ref:') ? button.title.slice('media-ref:'.length) : undefined;
+    const button = target.closest<HTMLElement>('.pergamino-media-reference, .pergamino-media-image, [data-media-ref]');
+    const encodedPath = button?.getAttribute('data-media-ref')
+      ?? (button?.title.startsWith('media-ref:') ? button.title.slice('media-ref:'.length) : undefined);
     if (!encodedPath) return;
-    event.preventDefault();
+    event?.preventDefault();
+    event?.stopPropagation();
     const segments = encodedPath.split('/');
     if (segments.length < 2) return;
-    let libraryName: string;
-    let path: string;
+    let pathSegments: string[];
     try {
-      libraryName = decodeURIComponent(segments.shift()!);
-      path = segments.map(segment => decodeURIComponent(segment)).join('/');
+      pathSegments = segments.map(segment => {
+        try { return decodeURIComponent(segment); }
+        catch { return segment; }
+      });
     } catch {
       this.referenceMessage = 'La referencia del archivo no es válida.';
       return;
     }
-    const library = this.libraryTree.libraries().find(item => item.name.toLocaleLowerCase() === libraryName.toLocaleLowerCase());
+    await this.libraryTree.initialize();
+    const libraries = this.libraryTree.libraries();
+    const needsScan = libraries.filter(library => !this.libraryTree.nodes().some(node => node.libraryId === library.id && node.kind === 'file'));
+    await Promise.all(needsScan.map(library => this.libraryTree.rescan(library).catch(() => undefined)));
+    let library: (typeof libraries)[number] | undefined;
+    let filePath = '';
+    const normalized = (value: string) => value.replace(/^\/+|\/+$/g, '').toLocaleLowerCase();
+    const indexedFiles = this.libraryTree.nodes().filter(node => node.kind === 'file');
+    for (const candidate of libraries) {
+      const prefix = libraryPathPrefix(candidate.root).split('/').filter(Boolean);
+      const candidateFiles = indexedFiles.filter(node => node.libraryId === candidate.id);
+      for (const node of candidateFiles) {
+        const referencePaths = [
+          [candidate.name, ...prefix, ...node.path.split('/')],
+          [candidate.name, ...node.path.split('/')],
+          [...prefix, ...node.path.split('/')]
+        ].map(parts => normalized(parts.join('/')));
+        if (!referencePaths.includes(normalized(pathSegments.join('/')))) continue;
+        library = candidate;
+        filePath = node.path;
+        break;
+      }
+      if (library) break;
+    }
     if (!library) {
-      this.referenceMessage = `No se encontró la biblioteca «${libraryName}».`;
-      return;
+      const libraryName = pathSegments[0];
+      library = libraries.find(item => item.name.toLocaleLowerCase() === libraryName.toLocaleLowerCase());
+      if (library) {
+        filePath = pathSegments.slice(1).join('/');
+        const prefix = libraryPathPrefix(library.root).split('/').filter(Boolean);
+        if (prefix.length && prefix.every((part, index) => filePath.split('/')[index]?.toLocaleLowerCase() === part.toLocaleLowerCase())) {
+          filePath = filePath.split('/').slice(prefix.length).join('/');
+        }
+      }
     }
     try {
+      if (!library) {
+        this.referenceMessage = `No se encontró el archivo de referencia «${pathSegments.at(-1)}» en las bibliotecas disponibles.`;
+        return;
+      }
+      filePath = filePath.replace(/^\/+/, '');
+      if (!filePath) throw new Error('Ruta de archivo vacía');
       const source = await this.libraryTree.getPlaybackSource(library, {
-        libraryId: library.id, path, parentPath: path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '',
-        name: path.split('/').at(-1)!, kind: 'file', extension: '', mimeType: '', size: 0, lastModified: 0, depth: 0
+        libraryId: library.id, path: filePath, parentPath: filePath.includes('/') ? filePath.slice(0, filePath.lastIndexOf('/')) : '',
+        name: filePath.split('/').at(-1)!, kind: 'file', extension: '', mimeType: '', size: 0, lastModified: 0, depth: 0
       });
       this.referenceMessage = '';
       this.mediaReference.emit(source);
     } catch {
-      this.referenceMessage = `No se pudo abrir «${path.split('/').at(-1)}». Comprueba que el archivo siga en la biblioteca.`;
+      this.referenceMessage = `No se pudo abrir «${filePath.split('/').at(-1)}». Comprueba que el archivo siga en la biblioteca.`;
     }
   }
 
@@ -167,9 +209,9 @@ export class TextPlusComponent implements OnInit, OnDestroy {
       catch { /* Se conserva una etiqueta genérica si la ruta no se puede decodificar. */ }
       const fileName = label.slice(2).split('/').at(-1) ?? '';
       if (/\.(png|jpe?g|gif|webp|bmp|svg|avif)$/i.test(fileName)) {
-        return `<button type="button" class="pergamino-media-image" title="media-ref:${this.escaparHtml(encodedPath)}"><img class="pergamino-reference-image" alt="${this.escaparHtml(fileName)}" title="media-ref:${this.escaparHtml(encodedPath)}"></button>`;
+        return `<button type="button" class="pergamino-media-image" data-media-ref="${this.escaparHtml(encodedPath)}" title="Abrir ${this.escaparHtml(fileName)}"><img class="pergamino-reference-image" alt="${this.escaparHtml(fileName)}" data-media-ref="${this.escaparHtml(encodedPath)}"></button>`;
       }
-      return `<button type="button" class="pergamino-media-reference" title="media-ref:${this.escaparHtml(encodedPath)}">${this.escaparHtml(label)}</button>`;
+      return `<button type="button" class="pergamino-media-reference" data-media-ref="${this.escaparHtml(encodedPath)}" title="Abrir ${this.escaparHtml(fileName)}">${this.escaparHtml(label)}</button>`;
     });
   }
 
@@ -299,7 +341,8 @@ export class TextPlusComponent implements OnInit, OnDestroy {
     if (!host) return;
     const images = [...host.querySelectorAll<HTMLImageElement>('img.pergamino-reference-image')];
     for (const image of images) {
-      const encodedPath = image.title.startsWith('media-ref:') ? image.title.slice('media-ref:'.length) : '';
+      const encodedPath = image.getAttribute('data-media-ref')
+        ?? (image.title.startsWith('media-ref:') ? image.title.slice('media-ref:'.length) : '');
       if (!encodedPath || image.hasAttribute('src')) continue;
       const cached = this.referenceImageUrls.get(encodedPath);
       if (cached) { image.src = cached; continue; }
@@ -321,6 +364,7 @@ export class TextPlusComponent implements OnInit, OnDestroy {
         if (generation === this.imageRenderGeneration && image.isConnected) image.alt = `No se pudo cargar ${image.alt}`;
       }
     }
+    host.onclick = event => { void this.openMediaReferenceFromTarget(event.target, event); };
   }
 
   convertirPergamino(): void { this.code = true; this.actualizarVistaPergamino(); }

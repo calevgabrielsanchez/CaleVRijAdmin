@@ -23,6 +23,16 @@
 @keyframes settings-spin { to { transform: rotate(360deg); } }
 .settings-card button.secondary-button { border-color: #176b91; background: linear-gradient(145deg, #bcecff, #6ac9ef);; color: #142754; }
 .root-status { margin: 12px 0 0; padding: 8px 10px; border: 1px solid #176b91; border-radius: 4px; background:linear-gradient(145deg, #bcecff, #6ac9ef);; color: #142754; font-size: 12px; overflow-wrap: anywhere; }
+.cloud-error-cache { display: grid; gap: 7px; margin-top: 9px; padding: 9px; border: 1px solid #a33; border-radius: 5px; background: #fff0f0; color: #541b1b; }
+.cloud-sync-progress { display: grid; gap: 5px; margin-top: 8px; padding: 8px; border: 1px solid #176b91; border-radius: 4px; background: #f3fdff; color: #142754; }
+.cloud-sync-progress-label { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; }
+.cloud-sync-progress-label strong { overflow: hidden; text-overflow: ellipsis; }
+.cloud-sync-progress progress { width: 100%; height: 12px; accent-color: #176b91; }
+.cloud-error-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
+.cloud-error-heading button { min-height: 30px; margin: 0; padding: 5px 8px; font-size: 11px; }
+.cloud-error-entry { padding: 6px; border: 1px solid #d6a4a4; border-radius: 4px; background: #fffafa; font-size: 11px; }
+.cloud-error-entry summary { cursor: pointer; overflow-wrap: anywhere; font-weight: 700; }
+.cloud-error-entry pre { max-height: 180px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 10px/1.4 Consolas, monospace; }
 .settings-card code { padding: 1px 4px; border-radius: 3px; background: #ffffffb0; color: #0f4a63; font: 11px Consolas, "Courier New", monospace; }
 .libraries-card { border-color: #142754; background: linear-gradient(145deg, #cdf1ff, #a9e2f8); }
 .library-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }

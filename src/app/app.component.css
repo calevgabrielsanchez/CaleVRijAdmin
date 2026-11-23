@@ -5,6 +5,14 @@
 .loading-spinner { width: 38px; height: 38px; border: 5px solid #89bfd0; border-top-color: #176b91; border-radius: 50%; animation: loading-spin .8s linear infinite; }
 .loading-dialog strong { font-size: 15px; }
 .loading-hint { color: #456579; font-size: 12px; }
+.sync-dialog { width: min(100%, 350px); max-height: calc(100% - 24px); overflow: auto; }
+.sync-dialog-progress { display: grid; width: 100%; gap: 7px; padding: 10px; border: 1px solid #176b91; border-radius: 6px; background: #f3fdff; color: #142754; text-align: left; }
+.sync-dialog-progress-label { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+.sync-dialog-progress-label strong { overflow: hidden; text-overflow: ellipsis; }
+.sync-dialog-progress progress { width: 100%; height: 12px; accent-color: #176b91; }
+.sync-dialog-button { min-height: 38px; padding: 8px 14px; border: 2px solid #176b91; border-radius: 6px; font-weight: 800; cursor: pointer; }
+.sync-dialog-button.cancel { background: #fff; color: #154c68; }
+.sync-dialog-button.accept { background: #83df93; color: #103d2b; }
 @keyframes loading-spin { to { transform: rotate(360deg); } }
 .corner-screw { position: absolute; z-index: 5; width: 16px; height: 16px; border: 1px solid #3d484c; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #f8ffff 0 8%, #737d80 24%, #22292c 63%, #bac2c3 70%); box-shadow: inset 0 1px 1px #fff8, 0 1px 1px #273033; pointer-events: none; }
 .corner-screw::before, .corner-screw::after { position: absolute; top: 6px; left: 3px; width: 8px; height: 2px; border-radius: 1px; background: #171c1e; box-shadow: 0 1px 1px #dce4e455; content: ""; }.corner-screw::after { transform: rotate(90deg); }

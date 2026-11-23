@@ -350,13 +350,23 @@ public class AndroidDirectoryAccessPlugin extends Plugin {
     public void deleteEntry(PluginCall call) {
         try {
             String[] parts = splitPath(call.getString("path"));
+            if (parts.length == 0) throw new Exception("Invalid entry path");
             String name = parts[parts.length - 1];
             DocumentFile parent = resolveDirectory(call.getString("uri"), join(parts, parts.length - 1), false);
             DocumentFile entry = parent == null ? null : parent.findFile(name);
-            if (entry == null || !entry.delete()) throw new Exception("Could not delete entry");
+            if (entry == null) throw new Exception("Entry not found: " + name);
+            if (entry.isDirectory()) deleteDirectoryContents(entry);
+            if (!entry.delete()) throw new Exception("Could not delete entry: " + name);
             call.resolve();
         } catch (Exception error) {
             call.reject("Could not delete the selected entry", error);
+        }
+    }
+
+    private void deleteDirectoryContents(DocumentFile directory) throws Exception {
+        for (DocumentFile child : directory.listFiles()) {
+            if (child.isDirectory()) deleteDirectoryContents(child);
+            if (!child.delete()) throw new Exception("Could not delete nested entry: " + child.getName());
         }
     }
 
