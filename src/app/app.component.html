@@ -32,7 +32,7 @@
       } @else if (activeKey() === 'datos') {
         <app-data-section></app-data-section>
       } @else if (activeKey() === 'settings') {
-        <app-settings [libraryRoot]="projectLibraryRoot()"></app-settings>
+          <app-settings [libraryRoot]="projectLibraryRoot()" [flushBeforeCloudSync]="flushCreatividadStorage.bind(this)"></app-settings>
       } @else if (activeKey() === 'mente') {
          <app-creatividad [libraryRoot]="projectLibraryRoot()" (mediaReference)="playReferencedMedia($event)"></app-creatividad>
       } @else {

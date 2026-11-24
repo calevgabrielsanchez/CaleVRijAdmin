@@ -52,6 +52,8 @@ export class CreatividadComponent {
   private readonly cdr = inject(ChangeDetectorRef);
   private selectedLibraryRoot: ProjectDirectoryHandle | null = null;
   private loadGeneration = 0;
+  private saveQueue: Promise<void> = Promise.resolve();
+  private pendingSaves = 0;
   storageMessage = 'Selecciona una biblioteca para guardar los datos de Creatividad.';
   savedCreatividades: Creatividad[] = [];
   savedMemorias: Memoria[] = [];
@@ -223,6 +225,7 @@ export class CreatividadComponent {
   }
 
   private async loadFromLibrary(root: ProjectDirectoryHandle): Promise<void> {
+    if (this.pendingSaves) await this.saveQueue;
     const generation = ++this.loadGeneration;
     this.storageMessage = 'Cargando los datos de Creatividad…';
     try {
@@ -259,11 +262,46 @@ export class CreatividadComponent {
       dibujos: this.savedDibujos,
       borradorCreatividad: this.textoAEditar
     };
+    const root = this.selectedLibraryRoot;
+    this.pendingSaves++;
+    const save = this.saveQueue.then(async () => {
+      const latest = await this.storage.load(root);
+      await this.storage.save(root, {
+        creatividad: this.mergeCreatividades(latest.creatividad, data.creatividad),
+        memorias: this.mergeMemorias(latest.memorias, data.memorias),
+        dibujos: [...new Map([...latest.dibujos, ...data.dibujos].map(item => [item.id, item])).values()],
+        borradorCreatividad: data.borradorCreatividad || latest.borradorCreatividad || ''
+      });
+    });
+    this.saveQueue = save.catch(() => undefined).finally(() => { this.pendingSaves = Math.max(0, this.pendingSaves - 1); });
     try {
-      await this.storage.save(this.selectedLibraryRoot, data);
+      await save;
       this.storageMessage = 'Datos guardados en la carpeta Creatividad de la biblioteca.';
+      this.cdr.detectChanges();
     } catch {
       this.storageMessage = 'No se pudieron guardar los datos. Comprueba los permisos de escritura.';
+      this.cdr.detectChanges();
+    }
+  }
+
+  async flushPendingStorage(): Promise<void> {
+    await this.saveQueue;
+  }
+
+  async flushBeforeSync(): Promise<void> {
+    await this.saveQueue;
+    if (this.pendingSaves === 0 && this.selectedLibraryRoot) {
+      const persisted = await this.storage.load(this.selectedLibraryRoot);
+      this.savedMemorias = this.mergeMemorias(this.savedMemorias, persisted.memorias);
+      this.savedCreatividades = this.mergeCreatividades(this.savedCreatividades, persisted.creatividad);
+      this.savedDibujos = [...new Map([...this.savedDibujos, ...persisted.dibujos].map(item => [item.id, item])).values()];
+      await this.storage.save(this.selectedLibraryRoot, {
+        creatividad: this.savedCreatividades,
+        memorias: this.savedMemorias,
+        dibujos: this.savedDibujos,
+        borradorCreatividad: this.textoAEditar
+      });
+      await this.saveQueue;
     }
   }
 
@@ -652,6 +690,23 @@ export class CreatividadComponent {
       return;
     }
 
+    if (!this.selectedLibraryRoot) {
+      this.storageMessage = 'Selecciona una biblioteca desde Menu antes de guardar una memoria.';
+      this.cdr.detectChanges();
+      return;
+    }
+
+    try {
+      const persisted = await this.storage.load(this.selectedLibraryRoot);
+      this.savedMemorias = this.mergeMemorias(this.savedMemorias, persisted.memorias);
+      this.savedCreatividades = [...new Map([...this.savedCreatividades, ...persisted.creatividad].map(item => [item.id, item])).values()];
+      this.savedDibujos = [...new Map([...this.savedDibujos, ...persisted.dibujos].map(item => [item.id, item])).values()];
+    } catch {
+      this.storageMessage = 'No se pudieron leer los datos guardados antes de agregar la memoria.';
+      this.cdr.detectChanges();
+      return;
+    }
+
     const aleatorio = this.generarAleatorioId();
     const memoria: Memoria = { id: nombre + '_' + aleatorio, updatedAt: Date.now(), _deleted: false };
 
@@ -668,11 +723,26 @@ export class CreatividadComponent {
     });
 
     this.memoria = memoria;
-    this.savedMemorias = [...this.savedMemorias, memoria];
+    this.savedMemorias = [...this.savedMemorias.filter(item => item.id !== memoria.id), memoria];
     await this.onGuardarCambios();
+    if (this.storageMessage.startsWith('No se pudieron')) {
+      this.savedMemorias = this.savedMemorias.filter(item => item.id !== memoria.id);
+    }
+    this.cdr.detectChanges();
   }
 
   async abrirMemoria() {
+    try {
+      if (this.selectedLibraryRoot) {
+        const persisted = await this.storage.load(this.selectedLibraryRoot);
+        this.savedMemorias = this.mergeMemorias(this.savedMemorias, persisted.memorias);
+      }
+    } catch (error) {
+      console.error('No se pudieron leer las memorias guardadas.', error);
+      this.storageMessage = 'No se pudieron leer las memorias guardadas. Revisa los datos de .calevri/creatividad.json.';
+      this.cdr.detectChanges();
+      return;
+    }
     const memorias = this.savedMemorias;
 
     if (memorias.length === 0) {
@@ -706,6 +776,24 @@ export class CreatividadComponent {
     });
 
     console.log('📖 Memoria abierta:', memoria);
+  }
+
+  private mergeMemorias(...groups: Memoria[][]): Memoria[] {
+    const merged = new Map<string, Memoria>();
+    for (const memory of groups.flat()) {
+      const current = merged.get(memory.id);
+      if (!current || Number(memory.updatedAt ?? 0) >= Number(current.updatedAt ?? 0)) merged.set(memory.id, memory);
+    }
+    return [...merged.values()];
+  }
+
+  private mergeCreatividades(...groups: Creatividad[][]): Creatividad[] {
+    const merged = new Map<string, Creatividad>();
+    for (const item of groups.flat()) {
+      const current = merged.get(item.id);
+      if (!current || Number(item.updatedAt ?? 0) >= Number(current.updatedAt ?? 0)) merged.set(item.id, item);
+    }
+    return [...merged.values()];
   }
   //---------------------------------------------------dibujo ------------------------------
 

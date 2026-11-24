@@ -350,7 +350,16 @@ export class CloudLibrarySyncService {
             parent.data.files = parent.data.files.filter(file => file.name !== node.name);
           }
         }
-        else if (node.deleted_at && node.id !== ROOT_ID) await this.removeLocalNodeById(node.id, localById);
+        else if (node.deleted_at && node.id !== ROOT_ID) {
+          const deletedNode = localById.get(node.id);
+          if (deletedNode) {
+            const protectedData = await this.preserveLocalCreatividad(deletedNode.directory, node.data);
+            await this.writeNodeData(deletedNode.directory, { ...node, data: protectedData, deleted_at: null });
+            remote.set(node.id, { ...node, data: protectedData, deleted_at: null });
+            deletedNode.data = protectedData;
+          }
+          await this.removeLocalNodeById(node.id, localById);
+        }
         else await this.applyRemoteNode(root, node, remote, localById);
         applied++;
         this.updateProgress(applied, orderedChanges.length);
@@ -570,9 +579,11 @@ export class CloudLibrarySyncService {
     }
     if (!directory) return;
     if (!found || found.id !== node.id) await this.writeNodeId(directory, node.id);
-    await this.writeNodeData(directory, node);
+    const dataToApply = await this.preserveLocalCreatividad(directory, node.data);
+    await this.writeNodeData(directory, { ...node, data: dataToApply });
     const appliedNode: LocalNode = {
       ...node,
+      data: dataToApply,
       directory,
       parentDirectory,
       depth: node.parent_id === ROOT_ID ? 1 : (localById.get(node.parent_id ?? '')?.depth ?? 0) + 1
@@ -582,6 +593,24 @@ export class CloudLibrarySyncService {
       const remoteChild = remote.get(child.id);
       if (remoteChild && !remoteChild.deleted_at) await this.applyRemoteNode(root, remoteChild, remote, localById);
     }
+  }
+
+  private async preserveLocalCreatividad(directory: ProjectDirectoryHandle, data: CloudData): Promise<CloudData> {
+    const files = [...(data.files ?? [])];
+    try {
+      const metadata = await directory.getDirectoryHandle(META_FOLDER);
+      for (const fileName of ['creatividad.json', 'memorias.json', 'memoria.json']) {
+        try {
+          const fileHandle = await metadata.getFileHandle(fileName);
+          const file = await fileHandle.getFile();
+          const localFile: CloudFile = { name: fileName, content: await this.toBase64(file), lastModified: file.lastModified };
+          const remoteIndex = files.findIndex(item => item.name === localFile.name);
+          if (remoteIndex < 0) files.push(localFile);
+          else if (files[remoteIndex].content !== localFile.content) files[remoteIndex] = localFile;
+        } catch { /* Este respaldo todavía no existe en la biblioteca. */ }
+      }
+    } catch { /* No hay datos locales de Creatividad para proteger. */ }
+    return { ...data, files };
   }
 
   private async writeNodeData(directory: ProjectDirectoryHandle, node: CloudNode): Promise<void> {

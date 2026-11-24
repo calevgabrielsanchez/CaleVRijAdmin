@@ -17,6 +17,7 @@ type SettingsPage = 'sync' | 'qr' | 'about';
 export class SettingsComponent implements OnDestroy {
   @ViewChild('qrVideo') private qrVideo?: ElementRef<HTMLVideoElement>;
   @Input() libraryRoot: ProjectDirectoryHandle | null = null;
+  @Input() flushBeforeCloudSync?: () => Promise<void>;
   readonly sync = inject(P2PSyncService);
   readonly libraryTree = inject(LibraryTreeService);
   readonly config = inject(ConfigService);
@@ -38,9 +39,11 @@ export class SettingsComponent implements OnDestroy {
 
   constructor() {
     void this.libraryTree.initialize();
+    let previousSyncState: P2PState = this.sync.state();
     effect(() => {
-      if (this.sync.state() !== 'completed') return;
-      void this.applySyncedData();
+      const state = this.sync.state();
+      if (state === 'completed' && previousSyncState !== 'completed') void this.applySyncedData();
+      previousSyncState = state;
     });
     effect(() => {
       const invitation = this.sync.invitationCode();
@@ -73,6 +76,7 @@ export class SettingsComponent implements OnDestroy {
     }
     this.formMessage = '';
     this.activePage.set('sync');
+    await this.flushBeforeCloudSync?.();
     await this.cloudSync.syncManually();
   }
 

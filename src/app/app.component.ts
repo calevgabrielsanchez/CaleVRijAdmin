@@ -216,6 +216,10 @@ export class AppComponent {
     this.playLibraryFile(file);
   }
 
+  readonly flushCreatividadStorage = async (): Promise<void> => {
+    await this.creatividadInstance?.flushBeforeSync();
+  };
+
   setCurrentPlayerFileName(name: string): void {
     this.currentPlayerFileName.set(name);
   }

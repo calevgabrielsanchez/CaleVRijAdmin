@@ -412,7 +412,7 @@ export class P2PSyncService {
           const effectiveLastModified = metadata && fileLastModified <= metadata.receivedAt + 2000
             ? metadata.lastModified
             : fileLastModified;
-          const contentHash = root.kind === 'main' && path === '.calevri/creatividad.json'
+          const contentHash = root.kind === 'main' && ['.calevri/creatividad.json', '.calevri/memorias.json', '.calevri/memoria.json'].includes(path)
             ? await this.hashFile(fallback ?? await entry.getFile())
             : undefined;
           const file: SyncFileMeta = {
