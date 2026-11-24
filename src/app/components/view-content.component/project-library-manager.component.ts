@@ -179,6 +179,7 @@ export class ProjectLibraryManagerComponent implements OnChanges, OnInit {
   readonly fallbackMode = signal(false);
   readonly fallbackEntries = signal<FallbackNode[]>([]);
   readonly openMenuPath = signal<string | null>(null);
+  readonly expandedTreeNodes = signal<Set<string>>(new Set());
   readonly rootPermissionRequired = signal(false);
   private pendingBrowserRoot: ProjectDirectoryHandle | null = null;
 
@@ -212,6 +213,22 @@ export class ProjectLibraryManagerComponent implements OnChanges, OnInit {
 
   closeNodeMenu(): void {
     this.openMenuPath.set(null);
+  }
+
+  isTreeNodeExpanded(node: ProjectLibraryNode): boolean {
+    return this.expandedTreeNodes().has(this.nodeMenuKey(node));
+  }
+
+  toggleTreeNode(node: ProjectLibraryNode, event: MouseEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    const key = this.nodeMenuKey(node);
+    this.expandedTreeNodes.update(expanded => {
+      const next = new Set(expanded);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   }
 
   onDocumentClick(event: MouseEvent): void {

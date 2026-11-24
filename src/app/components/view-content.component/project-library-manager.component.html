@@ -15,6 +15,7 @@
         @for (library of libraries(); track library.name) {
           <div class="tree-level level-0">
             <div class="tree-row">
+              <button type="button" class="tree-expander" [attr.aria-expanded]="isTreeNodeExpanded(library)" [attr.aria-label]="(isTreeNodeExpanded(library) ? 'Colapsar ' : 'Expandir ') + library.name" (click)="toggleTreeNode(library, $event)">{{ isTreeNodeExpanded(library) ? '▾' : '▸' }}</button>
               <span>📚</span><strong>{{ library.name }}</strong>
               <button type="button" class="tree-menu-button" [attr.aria-expanded]="openMenuPath() === nodeMenuKey(library)" aria-haspopup="menu" [attr.aria-label]="'Acciones de ' + library.name" title="Acciones" (click)="toggleNodeMenu(library, $event)">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
@@ -28,9 +29,10 @@
                 </div>
               }
             </div>
-            @for (shelf of library.children; track shelf.name) {
+            @if (isTreeNodeExpanded(library)) { @for (shelf of library.children; track shelf.name) {
               <div class="tree-level level-1">
                 <div class="tree-row">
+                  <button type="button" class="tree-expander" [attr.aria-expanded]="isTreeNodeExpanded(shelf)" [attr.aria-label]="(isTreeNodeExpanded(shelf) ? 'Colapsar ' : 'Expandir ') + shelf.name" (click)="toggleTreeNode(shelf, $event)">{{ isTreeNodeExpanded(shelf) ? '▾' : '▸' }}</button>
                   <span>🗄️</span><strong>{{ shelf.name }}</strong>
                   <button type="button" class="tree-menu-button" [attr.aria-expanded]="openMenuPath() === nodeMenuKey(shelf)" aria-haspopup="menu" [attr.aria-label]="'Acciones de ' + shelf.name" title="Acciones" (click)="toggleNodeMenu(shelf, $event)">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
@@ -44,9 +46,10 @@
                     </div>
                   }
                 </div>
-                @for (topic of shelf.children; track topic.name) {
+                @if (isTreeNodeExpanded(shelf)) { @for (topic of shelf.children; track topic.name) {
                   <div class="tree-level level-2">
                     <div class="tree-row">
+                      <button type="button" class="tree-expander" [attr.aria-expanded]="isTreeNodeExpanded(topic)" [attr.aria-label]="(isTreeNodeExpanded(topic) ? 'Colapsar ' : 'Expandir ') + topic.name" (click)="toggleTreeNode(topic, $event)">{{ isTreeNodeExpanded(topic) ? '▾' : '▸' }}</button>
                       <span>📂</span><strong>{{ topic.name }}</strong>
                       <button type="button" class="tree-menu-button" [attr.aria-expanded]="openMenuPath() === nodeMenuKey(topic)" aria-haspopup="menu" [attr.aria-label]="'Acciones de ' + topic.name" title="Acciones" (click)="toggleNodeMenu(topic, $event)">
                         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
@@ -60,9 +63,10 @@
                         </div>
                       }
                     </div>
-                    @for (book of topic.children; track book.name) {
+                    @if (isTreeNodeExpanded(topic)) { @for (book of topic.children; track book.name) {
                       <div class="tree-level level-3" role="button" tabindex="0" (click)="bookSelected.emit(book)" (keydown.enter)="bookSelected.emit(book)" (keydown.space)="$event.preventDefault(); bookSelected.emit(book)">
                         <div class="tree-row">
+                          <span class="tree-expander-placeholder" aria-hidden="true"></span>
                           <span>📖</span><strong>{{ book.name }}</strong>
                           <button type="button" class="tree-menu-button" [attr.aria-expanded]="openMenuPath() === nodeMenuKey(book)" aria-haspopup="menu" [attr.aria-label]="'Acciones de ' + book.name" title="Acciones" (click)="toggleNodeMenu(book, $event)" (keydown)="$event.stopPropagation()">
                             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
@@ -77,11 +81,11 @@
                           }
                         </div>
                       </div>
-                    }
+                    } }
                   </div>
-                }
+                } }
               </div>
-            }
+            } }
           </div>
         }
       </div>
