@@ -96,6 +96,7 @@
 .square-btn fa-icon svg,
 .menu-cerrar fa-icon svg { width: 10px; height: 10px; }
 .square-btn:hover { border-color: #55e7a1; filter: brightness(1.12); }
+.square-btn:disabled { opacity: .45; cursor: not-allowed; }
 .square-btn.light-txt { color: #f147bd; }
 .square-btn .active { color: #55e7a1; }
 

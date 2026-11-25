@@ -59,6 +59,7 @@ export class CreatividadComponent {
   savedMemorias: Memoria[] = [];
   savedDibujos: Dibujo[] = [];
   memoria = {} as Memoria;
+  currentMemoryId = '';
   dibujoModel = {} as Dibujo;
   creatividadModel = {} as Creatividad;
   private editingCreatividadId: string | null = null;
@@ -237,7 +238,9 @@ export class CreatividadComponent {
       this.creatividadModel = this.savedCreatividades.at(-1) ?? ({} as Creatividad);
       this.textoAEditar = data.borradorCreatividad || this.creatividadModel.desarrollo || '';
       if (data.borradorCreatividad) this.creatividadModel = { ...this.creatividadModel, desarrollo: data.borradorCreatividad };
-      this.memoria = this.savedMemorias.at(-1) ?? ({} as Memoria);
+      this.memoria = {} as Memoria;
+      this.currentMemoryId = '';
+      this.historia = [];
       this.dibujoModel = this.savedDibujos.at(-1) ?? ({} as Dibujo);
       this.storageMessage = 'Datos cargados desde la carpeta Creatividad de la biblioteca.';
       this.cdr.detectChanges();
@@ -708,7 +711,7 @@ export class CreatividadComponent {
     }
 
     const aleatorio = this.generarAleatorioId();
-    const memoria: Memoria = { id: nombre + '_' + aleatorio, updatedAt: Date.now(), _deleted: false };
+    const memoria: Memoria = { id: nombre + '_' + aleatorio, nombre, updatedAt: Date.now(), _deleted: false };
 
     const palabras = ['uno', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve', 'diez',
       'once', 'doce', 'trece', 'catorce', 'quince', 'dieciseis', 'diecisiete', 'dieciocho', 'diecinueve', 'veinte'];
@@ -723,10 +726,65 @@ export class CreatividadComponent {
     });
 
     this.memoria = memoria;
+    this.currentMemoryId = memoria.id;
     this.savedMemorias = [...this.savedMemorias.filter(item => item.id !== memoria.id), memoria];
     await this.onGuardarCambios();
     if (this.storageMessage.startsWith('No se pudieron')) {
       this.savedMemorias = this.savedMemorias.filter(item => item.id !== memoria.id);
+    }
+    this.cdr.detectChanges();
+  }
+
+  async guardarCambiosMemoria(): Promise<void> {
+    if (!this.selectedLibraryRoot) {
+      this.storageMessage = 'Selecciona una biblioteca antes de guardar los cambios de la memoria.';
+      return;
+    }
+    const current = this.savedMemorias.find(item => item.id === this.currentMemoryId);
+    if (!current) {
+      this.storageMessage = 'Abre o crea una memoria antes de guardar cambios.';
+      return;
+    }
+    const fields = ['uno', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve', 'diez', 'once', 'doce', 'trece', 'catorce', 'quince', 'dieciseis', 'diecisiete', 'dieciocho', 'diecinueve', 'veinte'];
+    const updated: Memoria = { ...current, updatedAt: Date.now(), _deleted: false };
+    fields.forEach((field, index) => {
+      updated[`${field}Palabra`] = (document.getElementById(`text${index + 1}`) as HTMLInputElement | null)?.value ?? '';
+      updated[`${field}Descripcion`] = this.historia[index] ?? '';
+    });
+    this.memoria = updated;
+    this.savedMemorias = this.savedMemorias.map(item => item.id === updated.id ? updated : item);
+    await this.onGuardarCambios();
+    this.memoryTableMessage = this.storageMessage.startsWith('Datos guardados')
+      ? `Cambios guardados en ${updated['nombre'] ?? updated.id}.`
+      : this.storageMessage;
+    this.cdr.detectChanges();
+  }
+
+  async borrarMemoria(): Promise<void> {
+    const current = this.savedMemorias.find(item => item.id === this.currentMemoryId);
+    if (!current) {
+      this.memoryTableMessage = 'Abre o crea una memoria antes de borrarla.';
+      return;
+    }
+    if (!this.selectedLibraryRoot) {
+      this.storageMessage = 'Selecciona una biblioteca antes de borrar una memoria.';
+      return;
+    }
+    if (!confirm(`¿Borrar la memoria «${current['nombre'] ?? current.id}»?`)) return;
+    try {
+      await this.storage.deleteMemory(this.selectedLibraryRoot, current.id);
+      this.savedMemorias = this.savedMemorias.filter(item => item.id !== current.id);
+      this.currentMemoryId = '';
+      this.memoria = {} as Memoria;
+      this.historia = [];
+      for (let index = 1; index <= 20; index++) {
+        const input = document.getElementById(`text${index}`) as HTMLInputElement | null;
+        if (input) input.value = '';
+      }
+      this.memoryTableMessage = `Se borró «${current['nombre'] ?? current.id}».`;
+      this.storageMessage = 'Eliminación guardada en la administración de memorias.';
+    } catch {
+      this.memoryTableMessage = 'No se pudo borrar la memoria. Revisa los permisos de escritura.';
     }
     this.cdr.detectChanges();
   }
@@ -750,7 +808,7 @@ export class CreatividadComponent {
       return;
     }
 
-    const lista = memorias.map((memoria, i) => `${i + 1}.- ${memoria.id}`).join('\n');
+    const lista = memorias.map((memoria, i) => `${i + 1}.- ${memoria['nombre'] ?? memoria.id}`).join('\n');
     const indice = prompt('¿Qué memoria quieres abrir?\n\n' + lista + '\n\nEscribe el número:')?.trim();
 
     if (!indice) {
@@ -764,6 +822,8 @@ export class CreatividadComponent {
     }
 
     const memoria = memorias[numero - 1];
+    this.memoria = memoria;
+    this.currentMemoryId = memoria.id;
     const palabras = ['uno', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve', 'diez',
       'once', 'doce', 'trece', 'catorce', 'quince', 'dieciseis', 'diecisiete', 'dieciocho', 'diecinueve', 'veinte'];
 

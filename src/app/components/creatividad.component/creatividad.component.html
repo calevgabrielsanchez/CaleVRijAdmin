@@ -151,10 +151,12 @@
         <div id="memoria-div" [hidden]="!memoriaB">
             <div class="row-universo">
                 <div class="btn-group-four">
-                    <button class="square-btn light-txt" (click)="guardarMemoria()"><fa-icon size="2x"
+                    <button type="button" class="square-btn light-txt" aria-label="Guardar como nueva memoria" title="Guardar como nueva memoria" (click)="guardarMemoria()"><fa-icon size="2x"
                             [icon]="faSave"></fa-icon></button>
-                    <button class="square-btn light-txt" (click)="abrirMemoria()"><fa-icon size="2x"
+                    <button type="button" class="square-btn light-txt" aria-label="Abrir memoria" title="Abrir memoria" (click)="abrirMemoria()"><fa-icon size="2x"
                             [icon]="faFolderOpen"></fa-icon></button>
+                    <button type="button" class="square-btn light-txt" aria-label="Guardar cambios de la memoria" title="Guardar cambios de la memoria actual" [disabled]="!currentMemoryId" (click)="guardarCambiosMemoria()"><fa-icon size="2x" [icon]="faSave"></fa-icon></button>
+                    <button type="button" class="square-btn light-txt" aria-label="Borrar memoria" title="Borrar memoria actual" [disabled]="!currentMemoryId" (click)="borrarMemoria()"><fa-icon size="2x" [icon]="faTrashCan"></fa-icon></button>
                 </div>
             </div>
             @if (memoryTableMessage) { <p class="storage-message" role="alert">{{ memoryTableMessage }}</p> }

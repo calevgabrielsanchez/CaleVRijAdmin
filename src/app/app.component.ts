@@ -125,7 +125,7 @@ export class AppComponent {
     openTextPlus: () => this.openTextPlus(),
     selectSheet: index => this.selectSheet(index),
     addSheet: () => this.addSheet(),
-    removeSheet: () => this.removeSheet(),
+    removeSheet: () => { void this.removeSheet(); },
     updateSheetProperties: (name, details) => this.updateSheetProperties(name, details),
     updateBackground: event => {
       const value = (event.target as HTMLInputElement).value;
@@ -398,17 +398,32 @@ export class AppComponent {
   }
 
   addSheet(): void {
-    const next = Math.max(0, ...this.sheets().map(sheet => Number(sheet.name.match(/\d+/)?.[0] ?? 0))) + 1;
+    const occupiedNames = new Set(this.sheets().flatMap(sheet => [sheet.name, sheet.storageFolderName ?? sheet.name].map(name => name.toLocaleLowerCase())));
+    let next = 1;
+    while (occupiedNames.has(`hoja ${next}`.toLocaleLowerCase())) next++;
     this.sheets.update(sheets => [...sheets, { name: `Hoja ${next}`, storageFolderName: `Hoja ${next}`, cells: {}, extraTexts: {}, formats: {}, merges: {}, columnWidths: {}, rowHeights: {} }]);
     this.currentSheetIndex.set(this.sheets().length - 1);
     this.selectionAnchor.set([0, 0]); this.selectionEnd.set([0, 0]);
     this.scheduleWorkbookSave();
   }
 
-  removeSheet(): void {
+  async removeSheet(): Promise<void> {
     if (this.sheets().length <= 1) return;
+    try { await this.flushWorkbookSave(); } catch { /* Se conserva la eliminación elegida aunque falle el guardado anterior. */ }
+    const removedSheet = this.sheets()[this.currentSheetIndex()];
+    const book = this.currentBook();
     this.sheets.update(sheets => sheets.filter((_, index) => index !== this.currentSheetIndex()));
     this.currentSheetIndex.set(Math.max(0, this.currentSheetIndex() - 1));
+    if (book) {
+      const folderName = removedSheet.storageFolderName ?? removedSheet.name;
+      try {
+        const folder = await book.handle.getDirectoryHandle(folderName);
+        await this.cloudLibrarySync.markDeleted(folder, folderName);
+        await book.handle.removeEntry(folderName, { recursive: true });
+      } catch {
+        this.actionMessage.set(`No se pudo eliminar de forma permanente la carpeta de «${removedSheet.name}».`);
+      }
+    }
     this.scheduleWorkbookSave();
   }
 
@@ -609,12 +624,24 @@ export class AppComponent {
   }
 
   private async persistWorkbook(book: TreeNode, sheets: SheetData[], activeSheetIndex: number): Promise<void> {
-    const validFolders = new Set(sheets.map(sheet => sheet.storageFolderName ?? sheet.name));
-    for await (const [name, entry] of book.handle.entries()) {
-      if (entry.kind === 'directory' && /^Hoja\s+\d+$/i.test(name) && !validFolders.has(name)) {
-        await this.cloudLibrarySync.markDeleted(entry, name);
-        await book.handle.removeEntry(name, { recursive: true });
+    const existingFolders = new Set<string>();
+    for await (const [name, entry] of book.handle.entries()) if (entry.kind === 'directory') existingFolders.add(name.toLocaleLowerCase());
+    const usedFolders = new Set<string>();
+    for (const sheet of sheets) {
+      let folderName = sheet.storageFolderName ?? sheet.name;
+      if (usedFolders.has(folderName.toLocaleLowerCase())) {
+        let next = 1;
+        do { folderName = `Hoja ${next++}`; }
+        while (usedFolders.has(folderName.toLocaleLowerCase()) || existingFolders.has(folderName.toLocaleLowerCase()));
+        sheet.storageFolderName = folderName;
       }
+      usedFolders.add(folderName.toLocaleLowerCase());
+    }
+    if (this.currentBook()?.handle === book.handle) {
+      const storageNames = new Map(sheets.map(sheet => [sheet.name, sheet.storageFolderName ?? sheet.name]));
+      this.sheets.update(items => items.map(sheet => storageNames.has(sheet.name)
+        ? { ...sheet, storageFolderName: storageNames.get(sheet.name) }
+        : sheet));
     }
     for (const sheet of sheets) {
       const folder = await book.handle.getDirectoryHandle(sheet.storageFolderName ?? sheet.name, { create: true });

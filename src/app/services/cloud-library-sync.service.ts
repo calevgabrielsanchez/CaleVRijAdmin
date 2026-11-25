@@ -42,6 +42,7 @@ export class CloudLibrarySyncService {
   readonly completed = signal(false);
   private clientPromise?: Promise<SupabaseClient>;
   private root: ProjectDirectoryHandle | null = null;
+  private syncTimer: ReturnType<typeof setTimeout> | null = null;
   private state: LocalState = { updatedAt: new Date(0).toISOString(), fingerprint: '', tombstones: [] };
   private running: Promise<void> | null = null;
   private currentPhase = 'Preparando la sincronización';
@@ -57,6 +58,15 @@ export class CloudLibrarySyncService {
     this.state = { updatedAt: new Date(0).toISOString(), fingerprint: '', tombstones: [] };
     if (!root) return;
     await this.loadErrorCache(root);
+  }
+
+  scheduleSync(delay = 1200): void {
+    if (!this.root) return;
+    if (this.syncTimer) clearTimeout(this.syncTimer);
+    this.syncTimer = setTimeout(() => {
+      this.syncTimer = null;
+      void this.syncNow();
+    }, delay);
   }
 
   async markDeleted(directory: ProjectDirectoryHandle, name: string): Promise<void> {
@@ -173,6 +183,17 @@ export class CloudLibrarySyncService {
           && !fileTombstones.some(item => item.id === tombstone.id)) fileTombstones.push(tombstone);
       }
       const localById = new Map(local.map(node => [node.id, node]));
+      const creativityConfigNode = local.find(node => node.parent_id === ROOT_ID && node.name === META_FOLDER);
+      const protectedConfigFiles = new Set(['creatividad.json', 'borrador-creatividad.json']);
+      if (creativityConfigNode) {
+        const protectedTombstoneIds = new Set(fileTombstones
+          .filter(item => item.parent_id === creativityConfigNode.id && protectedConfigFiles.has(item.name))
+          .map(item => item.id));
+        this.state.tombstones = this.state.tombstones.filter(item => !protectedTombstoneIds.has(item.id));
+        for (let index = fileTombstones.length - 1; index >= 0; index--) {
+          if (protectedTombstoneIds.has(fileTombstones[index].id)) fileTombstones.splice(index, 1);
+        }
+      }
       for (const node of local) {
         this.throwIfCancelled();
         const cloud = remote.get(node.id);
@@ -215,6 +236,11 @@ export class CloudLibrarySyncService {
       }
 
       this.setPhase('Sincronizando eliminaciones', 0, this.state.tombstones.length || 1);
+      if (creativityConfigNode) {
+        // .calevri is app data/administration, not a user-deletable library item.
+        // Old sync clients could accidentally tombstone it and erase creatividad.json.
+        this.state.tombstones = this.state.tombstones.filter(item => item.id !== creativityConfigNode.id);
+      }
       let processedTombstones = 0;
       for (const tombstone of this.state.tombstones) {
         this.throwIfCancelled();
@@ -231,12 +257,19 @@ export class CloudLibrarySyncService {
 
       const toApply: CloudNode[] = [];
       const deletedIds = new Set([...remote.values()].filter(node => !!node.deleted_at).map(node => node.id));
+      if (creativityConfigNode) deletedIds.delete(creativityConfigNode.id);
       this.setPhase('Comparando y subiendo cambios locales', 0, local.length);
       let reconciled = 0;
       for (const node of local) {
         this.throwIfCancelled();
         const cloud = remote.get(node.id);
-        if (cloud?.deleted_at && node.id !== ROOT_ID) toApply.push(cloud);
+        if (cloud?.deleted_at && node.id === creativityConfigNode?.id) {
+          const restoredConfig = { ...node, updated_at: new Date().toISOString(), deleted_at: null };
+          await this.upsert(restoredConfig);
+          remote.set(node.id, restoredConfig);
+          toApply.push(restoredConfig);
+        }
+        else if (cloud?.deleted_at && node.id !== ROOT_ID) toApply.push(cloud);
         else if (cloud?.deleted_at) {
           const recreatedRoot = { ...node, data: { ...node.data, files: cloud.data.files ?? [] } };
           await this.upsert(recreatedRoot);
@@ -599,7 +632,7 @@ export class CloudLibrarySyncService {
     const files = [...(data.files ?? [])];
     try {
       const metadata = await directory.getDirectoryHandle(META_FOLDER);
-      for (const fileName of ['creatividad.json', 'memorias.json', 'memoria.json']) {
+      for (const fileName of ['creatividad.json', 'borrador-creatividad.json', 'memorias.json', 'memoria.json']) {
         try {
           const fileHandle = await metadata.getFileHandle(fileName);
           const file = await fileHandle.getFile();
